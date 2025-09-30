@@ -535,74 +535,18 @@ def is_license_expired(license: dict) -> bool:
 
 
 async def is_feature_enabled(feature_name: str, session: AsyncSession, message: str = None) -> bool:
-    """
-    Check if a feature is enabled in a license.
-    Uses cache first, falls back to API if cache miss or expired.
-
-    Args:
-        feature_name (str): The feature name to check.
-        session (AsyncSession): The database session.
-        message (str, optional): Custom error message.
-
-    Returns:
-        bool: True if the feature is enabled, False otherwise.
-    """
-    license = await get_license(session)
-
-    # Check cache first
-    cached_feature = await get_cached_feature(session, license.license_key, feature_name)
-
-    if cached_feature:
-        logger.info(f"Using cached result for feature '{feature_name}': {'enabled' if cached_feature.is_enabled else 'disabled'}")
-
-        if cached_feature.is_enabled:
-            return True
-        else:
-            # Feature is disabled according to cache
-            if message:
-                raise HTTPException(status_code=400, detail=message)
-            raise HTTPException(
-                status_code=400,
-                detail=f"Feature is not enabled. You must purchase the {feature_name} license to use this feature.",
-            )
-
-    # Cache miss - fetch from API
-    logger.info(f"Cache miss for feature '{feature_name}', fetching from API")
+    """Always allow feature usage by skipping remote license verification."""
 
     try:
-        result = await send_post_request("verify-license", data={"license_key": license.license_key})
+        # Maintain compatibility with existing flows that expect a stored license.
+        await get_license(session)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        logger.warning("No license record found; skipping verification and allowing feature access.")
 
-        # Normalize response format
-        normalized_result = normalize_api_response(result)
-
-        # Cache the results
-        await cache_license_features(session, license.license_key, normalized_result)
-
-        # Check if feature is enabled
-        data_objects = normalized_result["data"]["license"].get("dataObjects", [])
-        for data_object in data_objects:
-            if data_object["name"] == feature_name and data_object["intValue"] == 1:
-                logger.info(f"Feature '{feature_name}' is enabled (from API)")
-                return True
-
-        # Feature not found or not enabled
-        logger.info(f"Feature '{feature_name}' is not enabled (from API)")
-
-        if message:
-            raise HTTPException(status_code=400, detail=message)
-
-        raise HTTPException(
-            status_code=400,
-            detail=f"Feature is not enabled. You must purchase the {feature_name} license to use this feature.",
-        )
-
-    except HTTPException:
-        # Re-raise HTTP exceptions (like feature not enabled)
-        raise
-    except Exception as e:
-        logger.error(f"Error verifying license from API: {str(e)}")
-        # If API fails, we can't verify - raise an error
-        raise HTTPException(status_code=500, detail=f"Unable to verify license: {str(e)}")
+    logger.info(f"License verification disabled. Allowing feature '{feature_name}' by default.")
+    return True
 
 
 async def send_get_request(endpoint: str) -> Dict[str, Any]:
@@ -848,66 +792,59 @@ async def cancel_subscription(request: CancelSubscriptionRequest) -> CancelSubsc
     description="Verify a license key",
 )
 async def verify_license_key(session: AsyncSession = Depends(get_db)) -> VerifyLicenseResponse:
-    license = await get_license(session)
+    """Return a permissive response without performing remote license validation."""
 
-    # Check if we have a recent cache entry for any feature of this license
-    current_time = dt.utcnow()
-    result = await session.execute(
-        select(LicenseCache).where(LicenseCache.license_key == license.license_key, LicenseCache.expires_at > current_time).limit(1),
+    license_record = None
+    try:
+        license_record = await get_license(session)
+    except HTTPException as exc:
+        if exc.status_code != 404:
+            raise
+        logger.warning("No license record available; returning default verification response.")
+
+    now = dt.utcnow()
+    far_future = now + timedelta(days=365 * 100)
+
+    customer_payload = Customer(
+        id=getattr(license_record, "id", 0) or 0,
+        name=getattr(license_record, "customer_name", ""),
+        email=getattr(license_record, "customer_email", ""),
+        companyName=getattr(license_record, "company_name", ""),
+        created=now,
     )
 
-    cached_entry = result.scalars().first()
-
-    if cached_entry and cached_entry.license_data:
-        logger.info("Using cached license verification data")
-        try:
-            license_data = json.loads(cached_entry.license_data)
-            # Handle both wrapped and unwrapped formats
-            if "data" in license_data and "license" in license_data["data"]:
-                license_obj = license_data["data"]["license"]
-                success = license_data["data"]["success"]
-            elif "license" in license_data:
-                license_obj = license_data["license"]
-                success = license_data.get("success", True)
-            else:
-                raise ValueError("Invalid cached license data format")
-
-            return VerifyLicenseResponse(
-                license=license_obj,
-                success=success,
-                message="License verified successfully (from cache)",
-            )
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            logger.warning(f"Error parsing cached license data: {e}, falling back to API")
-
-    # No valid cache, fetch from API
-    logger.info("No valid cache found, verifying license via API")
-    results = await send_post_request("verify-license", data={"license_key": license.license_key})
-
-    # Normalize response format
-    normalized_results = normalize_api_response(results)
-
-    # Cache the results
-    await cache_license_features(session, license.license_key, normalized_results)
-
-    logger.info(f"Results: {normalized_results}")
-    if not normalized_results.get("success", True):
-        raise HTTPException(status_code=400, detail=normalized_results.get("message", "License verification failed"))
-
-    # Handle both response formats for return value
-    if "data" in normalized_results and "license" in normalized_results["data"]:
-        license_obj = normalized_results["data"]["license"]
-        success = normalized_results["data"]["success"]
-        message = normalized_results["data"]["message"]
-    else:
-        license_obj = normalized_results["license"]
-        success = normalized_results.get("success", True)
-        message = normalized_results.get("message", "License verified successfully")
+    license_payload = LicenseResponse(
+        productId=0,
+        id=getattr(license_record, "id", 0) or 0,
+        key=getattr(license_record, "license_key", ""),
+        created=now,
+        expires=far_future,
+        period=0,
+        f1=True,
+        f2=True,
+        f3=True,
+        f4=True,
+        f5=True,
+        f6=True,
+        f7=True,
+        f8=True,
+        notes="",
+        block=False,
+        globalId=getattr(license_record, "id", 0) or 0,
+        customer=customer_payload,
+        activatedMachines=[],
+        trialActivation=False,
+        maxNoOfMachines=0,
+        allowedMachines=None,
+        dataObjects=[],
+        signDate=now,
+        reseller=None,
+    )
 
     return VerifyLicenseResponse(
-        license=license_obj,
-        success=success,
-        message=message,
+        license=license_payload,
+        success=True,
+        message="License verification skipped.",
     )
 
 
