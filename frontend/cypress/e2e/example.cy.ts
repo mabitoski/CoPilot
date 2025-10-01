@@ -3,6 +3,6 @@
 describe("My First Test", () => {
 	it("visits the app root url", () => {
 		cy.visit("/")
-		cy.contains(`[data-test="login-title"]`, "SOCFortress CoPilot")
+		cy.get('img[alt="logo"]').should('exist')
 	})
 })

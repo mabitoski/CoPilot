@@ -6,10 +6,7 @@
 				<AuthForm :type="type" />
 			</div>
 			<div v-if="align === 'left'" class="image-box basis-2/3">
-				<video playsinline autoplay muted loop poster="/images/login/cover.webp">
-					<source src="/images/login/video.mp4" type="video/mp4" />
-					Your browser does not support the video tag.
-				</video>
+				<img src="/images/login/marlx-nouvelle-aquitaine.webp" alt="Partner logos" />
 			</div>
 		</div>
 	</div>
@@ -72,14 +69,18 @@ onBeforeMount(() => {
 			}
 			*/
 
-			video {
+			img {
 				position: absolute;
-				top: 0;
-				left: 0;
-				width: 100%;
-				height: 100%;
-				object-fit: cover;
-				object-position: center;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				max-width: 90%;
+				max-height: 90%;
+				object-fit: contain;
+				background: var(--color-surface-2);
+				border-radius: calc(var(--spacing) * 3);
+				box-shadow: var(--depth-3);
+				padding: calc(var(--spacing) * 4);
 			}
 		}
 
