@@ -1,7 +1,7 @@
 <template>
 	<div>
 		<CardEntity :embedded clickable hoverable @click.stop="openForm()">
-			<template #headerMain>shuffle_workflow_id</template>
+			<template #headerMain>n8n_workflow_id</template>
 			<template #headerExtra>
 				<div class="flex items-center gap-2">
 					<span :class="{ 'text-default': incidentNotification.enabled }">
@@ -17,7 +17,7 @@
 				</div>
 			</template>
 			<template #default>
-				{{ incidentNotification.shuffle_workflow_id }}
+				{{ incidentNotification.n8n_workflow_id }}
 			</template>
 		</CardEntity>
 

@@ -68,7 +68,7 @@ from app.routers import portainer
 from app.routers import sap_siem
 from app.routers import scheduler
 from app.routers import scoutsuite
-from app.routers import shuffle
+from app.routers import n8n
 from app.routers import smtp
 from app.routers import stack_provisioning
 from app.routers import sublime
@@ -130,7 +130,7 @@ api_router.include_router(graylog.router)
 api_router.include_router(dfir_iris.router)
 api_router.include_router(cortex.router)
 api_router.include_router(velociraptor.router)
-api_router.include_router(shuffle.router)
+api_router.include_router(n8n.router)
 api_router.include_router(sublime.router)
 api_router.include_router(customers.router)
 api_router.include_router(healthcheck.router)

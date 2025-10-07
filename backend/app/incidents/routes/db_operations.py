@@ -1574,7 +1574,7 @@ async def create_case_notification_endpoint(
     """
     Create case notification with customer access validation.
 
-    This function collects the case details and then invokes the create_case_notification function to create a new case notification within the Shuffle Workflow.
+    This function collects the case details and then invokes the create_case_notification function to create a new case notification within the N8N workflow.
 
     Args:
         request (CaseNotificationCreate): The request object containing the case details.

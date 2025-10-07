@@ -555,7 +555,7 @@ async def put_customer_notification(notification: PutNotification, session: Asyn
         session.add(new_notification)
     else:
         existing_notification.customer_code = notification.customer_code
-        existing_notification.shuffle_workflow_id = notification.shuffle_workflow_id
+        existing_notification.n8n_workflow_id = notification.n8n_workflow_id
         existing_notification.enabled = notification.enabled
     await session.commit()
 

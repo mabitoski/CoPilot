@@ -426,7 +426,7 @@ class CaseNotificationResponse(BaseModel):
 class Notification(BaseModel):
     id: int
     customer_code: str
-    shuffle_workflow_id: str
+    n8n_workflow_id: str
     enabled: bool
 
 
@@ -438,7 +438,7 @@ class NotificationResponse(BaseModel):
 
 class PutNotification(BaseModel):
     customer_code: str
-    shuffle_workflow_id: str
+    n8n_workflow_id: str
     enabled: bool
 
 
