@@ -5,7 +5,7 @@
 			:options="organizationsOptions"
 			:loading="loadingList"
 			:disabled="loadingList"
-			placeholder="Select an Organization..."
+			placeholder="Select a workflow..."
 		/>
 
 		<n-spin v-if="selectedOrganization" :show="loadingToken" :size="14" class="app-auth-search-spinner">
@@ -22,7 +22,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Organization } from "@/types/shuffle.d"
+import type { Organization } from "@/types/n8n.d"
 import { NEl, NSelect, NSpin, useMessage } from "naive-ui"
 import { computed, onBeforeMount, ref, watch } from "vue"
 import Api from "@/api"
@@ -38,7 +38,7 @@ const organizationsOptions = computed(() => organizations.value.map(o => ({ valu
 function getOrganizations() {
 	loadingList.value = true
 
-	Api.shuffle
+	Api.n8n
 		.getOrganizations()
 		.then(res => {
 			if (res.data.success) {
@@ -58,7 +58,7 @@ function getOrganizations() {
 function getOrganization(id: string) {
 	loadingToken.value = true
 
-	Api.shuffle
+	Api.n8n
 		.getOrganization(id)
 		.then(res => {
 			if (res.data.success) {

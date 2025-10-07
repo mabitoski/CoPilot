@@ -175,7 +175,7 @@ class Notification(SQLModel, table=True):
     __tablename__ = "incident_management_notification"
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_code: str = Field(max_length=50, nullable=False)
-    shuffle_workflow_id: str = Field(max_length=1000, nullable=False)
+    n8n_workflow_id: str = Field(max_length=1000, nullable=False)
     enabled: bool = Field(default=True)
 
 

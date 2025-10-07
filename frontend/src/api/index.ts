@@ -22,7 +22,7 @@ import portainer from "./endpoints/portainer"
 import reporting from "./endpoints/reporting"
 import sca from "./endpoints/sca"
 import scheduler from "./endpoints/scheduler"
-import shuffle from "./endpoints/shuffle"
+import n8n from "./endpoints/n8n"
 import sigma from "./endpoints/sigma"
 import soc from "./endpoints/soc"
 import stackProvisioning from "./endpoints/stackProvisioning"
@@ -68,6 +68,6 @@ export default {
 	sca,
 	wazuh,
 	portainer,
-	shuffle,
+	n8n,
 	copilotMCP
 }

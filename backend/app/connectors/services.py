@@ -20,7 +20,7 @@ from app.connectors.influxdb.utils.universal import verify_influxdb_connection
 from app.connectors.models import Connectors
 from app.connectors.portainer.utils.universal import verify_portainer_connection
 from app.connectors.schema import ConnectorResponse
-from app.connectors.shuffle.utils.universal import verify_shuffle_connection
+from app.connectors.n8n.utils.universal import verify_n8n_connection
 from app.connectors.sublime.utils.universal import verify_sublime_connection
 from app.connectors.velociraptor.utils.universal import verify_velociraptor_connection
 from app.connectors.wazuh_indexer.utils.universal import verify_wazuh_indexer_connection
@@ -93,13 +93,13 @@ class CortexService(ConnectorServiceInterface):
         return await verify_cortex_connection(connector.connector_name)
 
 
-# Shuffle Service
-class ShuffleService(ConnectorServiceInterface):
+# N8N Service
+class N8NService(ConnectorServiceInterface):
     async def verify_authentication(
         self,
         connector: ConnectorResponse,
     ) -> Optional[ConnectorResponse]:
-        return await verify_shuffle_connection(connector.connector_name)
+        return await verify_n8n_connection(connector.connector_name)
 
 
 # Sublime Service
@@ -206,7 +206,7 @@ def get_connector_service(connector_name: str) -> Type[ConnectorServiceInterface
         "Velociraptor": VelociraptorService,
         "Graylog": GraylogService,
         "Cortex": CortexService,
-        "Shuffle": ShuffleService,
+        "N8N": N8NService,
         "Sublime": SublimeService,
         "InfluxDB": InfluxDBService,
         "Grafana": GrafanaService,
