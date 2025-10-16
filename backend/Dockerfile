@@ -40,7 +40,7 @@ RUN playwright install-deps
 RUN playwright install
 
 # Install wkhtmltopdf
-RUN apt-get install -y wkhtmltopdf
+RUN apt-get install -y wkhtmltopdf libmagic1
 
 # Copy your application into the Docker image
 WORKDIR /opt/copilot/backend
