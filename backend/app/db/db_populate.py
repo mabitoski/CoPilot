@@ -20,13 +20,24 @@ from app.network_connectors.models.network_connectors import (
 load_dotenv()
 
 
-def load_connector_data(
-    connector_name,
-    connector_type,
-    accepts_key,
-    description,
-    extra_data_key=None,
-):
+def _str_to_bool(value: str | bool | None) -> bool:
+    """
+    Convert environment variable strings to booleans.
+
+    Args:
+        value: Raw value coming from the environment.
+
+    Returns:
+        bool: Parsed boolean value.
+    """
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def load_connector_data(connector_name, connector_type, accepts_key, description, extra_data_key=None):
     """
     Load connector data from environment variables.
 
@@ -41,21 +52,28 @@ def load_connector_data(
         dict: A dictionary containing the connector data.
     """
     env_prefix = connector_name.upper().replace("-", "_").replace(" ", "_")
-    url = os.getenv(f"{env_prefix}_URL")
+    raw_url = os.getenv(f"{env_prefix}_URL")
+    url = (raw_url or "").strip()
+    connector_configured = bool(url)
     logger.info(
         f"Loading connector data for {connector_name} from environment variables with URL: {url}",
     )
+    if not url:
+        logger.warning(
+            f"No URL configured for {connector_name}. Connector will be created as not configured.",
+        )
+    raw_verified = os.getenv(f"{env_prefix}_VERIFIED")
     return {
         "connector_name": connector_name,
         "connector_type": connector_type,
-        "connector_url": os.getenv(f"{env_prefix}_URL"),
+        "connector_url": url,
         "connector_username": os.getenv(f"{env_prefix}_USERNAME"),
         "connector_password": os.getenv(f"{env_prefix}_PASSWORD"),
         "connector_api_key": os.getenv(f"{env_prefix}_API_KEY"),
         "connector_description": description,
         "connector_supports": os.getenv(f"{env_prefix}_SUPPORTS", "Not specified."),
-        "connector_configured": True,
-        "connector_verified": bool(os.getenv(f"{env_prefix}_VERIFIED", False)),
+        "connector_configured": connector_configured,
+        "connector_verified": _str_to_bool(raw_verified),
         "connector_accepts_host_only": accepts_key == "host_only",
         "connector_accepts_api_key": accepts_key == "api_key",
         "connector_accepts_username_password": accepts_key == "username_password",
