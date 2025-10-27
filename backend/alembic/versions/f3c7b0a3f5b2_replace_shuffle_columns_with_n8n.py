@@ -21,7 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.alter_column(
-        "alert_creation_settings",
+        "custom_alert_creation_settings",
         "shuffle_endpoint",
         new_column_name="n8n_endpoint",
         existing_type=sa.String(length=1024),
@@ -48,7 +48,7 @@ def downgrade() -> None:
         existing_nullable=False,
     )
     op.alter_column(
-        "alert_creation_settings",
+        "custom_alert_creation_settings",
         "n8n_endpoint",
         new_column_name="shuffle_endpoint",
         existing_type=sa.String(length=1024),
