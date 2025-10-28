@@ -114,6 +114,25 @@ function drawBackground(context: CanvasRenderingContext2D) {
   gradient.addColorStop(1, "#0f172a")
   context.fillStyle = gradient
   context.fillRect(0, 0, size.width, size.height)
+
+  context.save()
+  context.globalAlpha = 0.12
+  context.strokeStyle = "#1d4ed8"
+  context.lineWidth = 1
+  const gridSize = 40
+  for (let x = gridSize; x < size.width; x += gridSize) {
+    context.beginPath()
+    context.moveTo(x, 0)
+    context.lineTo(x, size.height)
+    context.stroke()
+  }
+  for (let y = gridSize; y < size.height; y += gridSize) {
+    context.beginPath()
+    context.moveTo(0, y)
+    context.lineTo(size.width, y)
+    context.stroke()
+  }
+  context.restore()
 }
 
 function drawParticles(context: CanvasRenderingContext2D, delta: number) {
