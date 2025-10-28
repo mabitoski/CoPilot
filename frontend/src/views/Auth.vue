@@ -2,11 +2,11 @@
 	<div class="page-auth">
 		<div v-if="!isLogged" class="wrapper flex justify-center">
 			<div v-if="align === 'right'" class="image-box basis-2/3" />
-			<div class="form-box flex basis-1/3 items-center justify-center" :class="{ centered: align === 'center' }">
+			<div class="form-box flex basis-2/5 items-center justify-center" :class="{ centered: align === 'center' }">
 				<AuthForm :type="type" />
 			</div>
 			<div v-if="align === 'left'" class="image-box basis-2/3">
-				<img src="/images/login/marlx-nouvelle-aquitaine.webp" alt="Partner logos" />
+				<PacmanGame />
 			</div>
 		</div>
 	</div>
@@ -17,8 +17,8 @@ import type { FormType } from "@/components/auth/types.d"
 import { computed, onBeforeMount, ref, toRefs } from "vue"
 import { useRoute } from "vue-router"
 import AuthForm from "@/components/auth/AuthForm.vue"
+import PacmanGame from "@/components/auth/PacmanGame.vue"
 import { useAuthStore } from "@/stores/auth"
-import { useThemeStore } from "@/stores/theme"
 
 type Align = "left" | "center" | "right"
 
@@ -31,8 +31,6 @@ const route = useRoute()
 const align = ref<Align>("left")
 const type = ref<FormType | undefined>(formType.value || undefined)
 
-const themeStore = useThemeStore()
-const activeColor = computed(() => themeStore.style["primary-color"])
 const authStore = useAuthStore()
 const isLogged = computed(() => authStore.isLogged)
 
@@ -47,53 +45,38 @@ onBeforeMount(() => {
 <style lang="scss" scoped>
 .page-auth {
 	min-height: 100svh;
+	background: radial-gradient(circle at top left, rgba(30, 64, 175, 0.35), transparent 45%),
+		radial-gradient(circle at bottom right, rgba(13, 148, 136, 0.28), transparent 42%), #020617;
+	color: #e2e8f0;
 
 	.wrapper {
 		min-height: 100svh;
+		background: linear-gradient(135deg, rgba(15, 23, 42, 0.55), rgba(2, 6, 23, 0.72));
 
 		.image-box {
 			position: relative;
-			background-color: v-bind(activeColor);
-
-			/*
-			&::after {
-				content: "";
-				width: 100%;
-				height: 100%;
-				position: absolute;
-				top: 0;
-				left: 0;
-				background-image: url(@/assets/images/pattern-onboard.png);
-				background-size: 500px;
-				background-position: center center;
-			}
-			*/
-
-			img {
-				position: absolute;
-				top: 50%;
-				left: 50%;
-				transform: translate(-50%, -50%);
-				max-width: 90%;
-				max-height: 90%;
-				object-fit: contain;
-				background: var(--color-surface-2);
-				border-radius: calc(var(--spacing) * 3);
-				box-shadow: var(--depth-3);
-				padding: calc(var(--spacing) * 4);
-			}
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 40px;
+			background: transparent;
+			overflow: hidden;
 		}
 
 		.form-box {
-			padding: 50px;
+			padding: clamp(32px, 6vw, 64px);
+			backdrop-filter: blur(12px);
+			background: rgba(2, 6, 23, 0.7);
+			box-shadow: 0 30px 60px rgba(2, 6, 23, 0.55);
+			border-left: 1px solid rgba(148, 163, 184, 0.1);
 
 			&.centered {
 				flex-basis: 100%;
 
 				.form-wrap {
-					padding: 60px;
+					padding: clamp(32px, 8vw, 80px);
 					width: 100%;
-					max-width: 500px;
+					max-width: 520px;
 				}
 
 				@media (max-width: 600px) {
@@ -108,12 +91,18 @@ onBeforeMount(() => {
 
 	@media (max-width: 800px) {
 		.wrapper {
+			background: transparent;
+
 			.image-box {
 				display: none;
 			}
 
 			.form-box {
 				flex-basis: 100%;
+				padding: 32px;
+				background: rgba(2, 6, 23, 0.8);
+				border-left: none;
+				border-top: 1px solid rgba(148, 163, 184, 0.1);
 			}
 		}
 	}
