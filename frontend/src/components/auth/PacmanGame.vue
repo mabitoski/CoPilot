@@ -108,31 +108,26 @@ function resetScene() {
 
 function drawBackground(context: CanvasRenderingContext2D) {
   const gradient = context.createLinearGradient(0, 0, size.width, size.height)
-  gradient.addColorStop(0, "#f59e0b")
-  gradient.addColorStop(0.55, "#b45309")
-  gradient.addColorStop(0.55, "#020617")
+  gradient.addColorStop(0, "#020617")
   gradient.addColorStop(1, "#0f172a")
   context.fillStyle = gradient
   context.fillRect(0, 0, size.width, size.height)
 
-  context.save()
-  context.globalAlpha = 0.12
-  context.strokeStyle = "#1d4ed8"
+  context.strokeStyle = "rgba(56, 189, 248, 0.08)"
   context.lineWidth = 1
-  const gridSize = 40
-  for (let x = gridSize; x < size.width; x += gridSize) {
+  const grid = 40
+  for (let x = grid; x < size.width; x += grid) {
     context.beginPath()
     context.moveTo(x, 0)
     context.lineTo(x, size.height)
     context.stroke()
   }
-  for (let y = gridSize; y < size.height; y += gridSize) {
+  for (let y = grid; y < size.height; y += grid) {
     context.beginPath()
     context.moveTo(0, y)
     context.lineTo(size.width, y)
     context.stroke()
   }
-  context.restore()
 }
 
 function drawParticles(context: CanvasRenderingContext2D, delta: number) {
@@ -160,8 +155,8 @@ function drawViruses(context: CanvasRenderingContext2D) {
   viruses.value.forEach((virus, index) => {
     context.save()
     context.translate(virus.x, virus.y)
-    const wiggle = Math.sin((lastTimestamp + index * 220) * 0.004)
-    context.rotate(wiggle * 0.12)
+    const wiggle = Math.sin((lastTimestamp + index * 180) * 0.004)
+    context.rotate(wiggle * 0.1)
 
     const bodyLength = 14
     const bodyWidth = 7
@@ -361,6 +356,8 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: 32px;
   box-shadow: inset 0 0 0 1px rgba(15, 118, 255, 0.15), 0 40px 60px rgba(8, 30, 66, 0.35);
+  background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.08), transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(56, 248, 200, 0.08), transparent 50%), #020720;
 }
 
 canvas {
