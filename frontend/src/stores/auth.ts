@@ -12,15 +12,15 @@ import { jwtRoleToUserRole } from "@/utils/auth"
 import { piniaStorage, removePersistentSessionKey } from "@/utils/secure-storage"
 
 export const useAuthStore = defineStore("auth", {
-	state: () => ({
-		user: {
-			access_token: "",
-			username: "",
-			email: "",
-			role: AuthUserRole.Unknown
-		} as AuthUser,
-		tokenDebounceTime: _toNumber(import.meta.env.VITE_TOKEN_DEBOUNCE_TIME) as number // seconds
-	}),
+state: () => ({
+	user: {
+		access_token: "",
+		username: "",
+		email: "",
+		role: AuthUserRole.Unknown
+	} as AuthUser,
+	tokenDebounceTime: _toNumber(import.meta.env.VITE_TOKEN_DEBOUNCE_TIME) as number // seconds
+}),
 	actions: {
 		setLogged(token: string) {
 			const jwtPayload = jose.decodeJwt<JWTPayload>(token)

@@ -1,7 +1,13 @@
 <template>
 	<div class="w-full min-w-64 max-w-96">
-		<div class="flex flex-col items-center text-center">
-			<Logo :dark="isDark" class="mb-12" max-height="160px" />
+		<div>
+			<Logo mini :dark="isDark" class="mb-4" max-height="40px" />
+			<div class="font-display mb-4 text-4xl font-bold" data-test="login-title">
+				{{ title }}
+			</div>
+			<div class="text-secondary text-lg">
+				Access the world of OpenSource security: Simplified, Streamlined, Accessible.
+			</div>
 		</div>
 
 		<transition name="form-fade" mode="out-in" appear class="my-10">
@@ -24,6 +30,13 @@ const props = defineProps<{
 const type = ref<FormType>("signin")
 const themeStore = useThemeStore()
 const isDark = computed<boolean>(() => themeStore.isThemeDark)
+const title = computed<string>(() =>
+	type.value === "signin"
+		? "SOCFortress CoPilot"
+		: type.value === "signup"
+			? "SOCFortress CoPilot"
+			: "Forgot Password"
+)
 
 onBeforeMount(() => {
 	if (props.type) {
