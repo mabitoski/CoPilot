@@ -1,15 +1,15 @@
 <template>
 	<div v-if="isDark && !mini" class="logo">
-		<img alt="logo" src="@/assets/images/socfortress_logo.svg?url" />
+		<img alt="logo" src="@/assets/images/socfortress_logo.png?url" />
 	</div>
 	<div v-else-if="isLight && !mini" class="logo">
-		<img alt="logo" src="@/assets/images/socfortress_logo.svg?url" />
+		<img alt="logo" src="@/assets/images/socfortress_logo.png?url" />
 	</div>
 	<div v-else-if="isDark && mini" class="logo">
-		<img alt="logo" src="@/assets/images/socfortress_logo.svg?url" />
+		<img alt="logo" src="@/assets/images/socfortress_logo.png?url" />
 	</div>
 	<div v-else-if="isLight && mini" class="logo">
-		<img alt="logo" src="@/assets/images/socfortress_logo.svg?url" />
+		<img alt="logo" src="@/assets/images/socfortress_logo.png?url" />
 	</div>
 </template>
 
