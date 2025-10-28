@@ -12,8 +12,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.connectors.n8n.schema.integrations import ExecuteWorkflowRequest
-from app.connectors.n8n.services.integrations import execute_workflow
+from app.connectors.shuffle.schema.integrations import ExecuteWorkflowRequest
+from app.connectors.shuffle.services.integrations import execute_workflow
 from app.connectors.wazuh_indexer.utils.universal import create_wazuh_indexer_client
 from app.connectors.wazuh_indexer.utils.universal import (
     create_wazuh_indexer_client_async,
@@ -572,7 +572,7 @@ async def handle_customer_notifications(
         logger.info(f"Executing workflow for customer code {customer_code}")
         await execute_workflow(
             ExecuteWorkflowRequest(
-                workflow_id=customer_notifications[0].n8n_workflow_id,
+                workflow_id=customer_notifications[0].shuffle_workflow_id,
                 execution_arguments={
                     "type": type,
                     "customer_code": customer_code,
@@ -581,6 +581,7 @@ async def handle_customer_notifications(
                     "alert_title": alert_payload.alert_title_payload,
                     "alert_id": alert_payload.alert_id,
                 },
+                start="",
             ),
         )
 

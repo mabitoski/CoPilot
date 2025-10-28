@@ -6,13 +6,13 @@
 					<n-form-item label="Enabled" path="enabled">
 						<n-switch v-model:value="form.enabled" />
 					</n-form-item>
-				<n-form-item label="N8N Workflow Id" path="n8n_workflow_id">
-					<n-input
-						v-model:value.trim="form.n8n_workflow_id"
-						placeholder="Input the N8N Workflow Id..."
-						clearable
-					/>
-				</n-form-item>
+					<n-form-item label="Shuffle Workflow Id" path="shuffle_workflow_id">
+						<n-input
+							v-model:value.trim="form.shuffle_workflow_id"
+							placeholder="Input the Shuffle Workflow Id..."
+							clearable
+						/>
+					</n-form-item>
 				</n-form>
 			</n-spin>
 		</div>
@@ -37,7 +37,7 @@ import { computed, onMounted, ref, watch } from "vue"
 import Api from "@/api"
 
 interface IncidentNotificationForm {
-	n8n_workflow_id: string
+	shuffle_workflow_id: string
 	enabled: boolean
 }
 
@@ -64,13 +64,13 @@ const formRef = ref<FormInst | null>(null)
 const loading = ref(false)
 
 const isValid = computed(() => {
-	return !!form.value.n8n_workflow_id
+	return !!form.value.shuffle_workflow_id
 })
 
 const rules: FormRules = {
-	n8n_workflow_id: {
+	shuffle_workflow_id: {
 		required: true,
-		message: "Please insert N8N Workflow Id",
+		message: "Please insert Shuffle Workflow Id",
 		trigger: ["input", "blur"]
 	}
 }
@@ -85,7 +85,7 @@ watch(loading, val => {
 
 function getClearForm(incidentNotification?: IncidentNotification): IncidentNotificationForm {
 	return {
-		n8n_workflow_id: incidentNotification?.n8n_workflow_id ?? "",
+		shuffle_workflow_id: incidentNotification?.shuffle_workflow_id ?? "",
 		enabled: incidentNotification?.enabled ?? false
 	}
 }
@@ -119,7 +119,7 @@ function submit() {
 
 	const payload: IncidentNotificationPayload = {
 		customer_code: customerCode,
-		n8n_workflow_id: form.value.n8n_workflow_id,
+		shuffle_workflow_id: form.value.shuffle_workflow_id,
 		enabled: form.value.enabled
 	}
 

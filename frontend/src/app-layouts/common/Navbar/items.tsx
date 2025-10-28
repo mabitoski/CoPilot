@@ -452,12 +452,12 @@ export default function getItems(): MenuMixedOption[] {
 							RouterLink,
 							{
 								to: {
-									name: "ExternalServices-N8nAppAuth"
+									name: "ExternalServices-SingulAppAuth"
 								}
 							},
-							{ default: () => "N8N Workflow Explorer" }
+							{ default: () => "Singul App Auth" }
 						),
-					key: "ExternalServices-N8nAppAuth"
+					key: "ExternalServices-SingulAppAuth"
 				}
 			]
 		},

@@ -265,10 +265,10 @@ const router = createRouter({
 					meta: { title: "Network Connectors" }
 				},
 				{
-					path: "n8n-workflow-explorer",
-					name: "ExternalServices-N8nAppAuth",
-					component: () => import("@/views/externalServices/N8nAppAuth.vue"),
-					meta: { title: "N8N Workflow Explorer" }
+					path: "singul-app-auth",
+					name: "ExternalServices-SingulAppAuth",
+					component: () => import("@/views/externalServices/SingulAppAuth.vue"),
+					meta: { title: "Singul App Auth" }
 				}
 			]
 		},

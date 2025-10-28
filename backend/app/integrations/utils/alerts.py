@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.integrations.utils.schema import N8nPayload
+from app.integrations.utils.schema import ShufflePayload
 from app.utils import get_customer_alert_settings
 
 
@@ -326,11 +326,11 @@ async def validate_ioc_type(ioc_value: str) -> str:
     return ioc_type
 
 
-async def send_to_n8n(payload: N8nPayload, session: AsyncSession) -> bool:
+async def send_to_shuffle(payload: ShufflePayload, session: AsyncSession) -> bool:
     """
-    Sends payload to an N8N webhook asynchronously using httpx.
+    Sends payload to Shuffle listening Webhook asynchronously using httpx.
     """
-    logger.info(f"Sending {payload} to N8N Webhook.")
+    logger.info(f"Sending {payload} to Shuffle Webhook.")
     try:
         async with httpx.AsyncClient(verify=False) as client:
             response = await client.post(
@@ -339,7 +339,7 @@ async def send_to_n8n(payload: N8nPayload, session: AsyncSession) -> bool:
                         customer_code=payload.customer_code,
                         session=session,
                     )
-                ).n8n_endpoint,
+                ).shuffle_endpoint,
                 json=payload.to_dict(),
             )
 

@@ -29,7 +29,7 @@ class AlertCreationSettingsCreate(BaseModel):
     misp_url: Optional[str]
     opencti_url: Optional[str]
     custom_message: Optional[str]
-    n8n_endpoint: Optional[str]
+    shuffle_endpoint: Optional[str]
     nvd_url: Optional[str] = "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId"
     event_orders: Optional[List[EventOrderCreate]] = None
 
@@ -59,6 +59,6 @@ class AlertCreationSettingsResponse(BaseModel):
     misp_url: Optional[str]
     opencti_url: Optional[str]
     custom_message: Optional[str]
-    n8n_endpoint: Optional[str]
+    shuffle_endpoint: Optional[str]
     nvd_url: Optional[str] = "https://services.nvd.nist.gov/rest/json/cves/2.0?cveId"
     event_orders: Optional[List[EventOrderResponse]] = None

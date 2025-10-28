@@ -4,7 +4,7 @@ import { HttpClient } from "../../httpClient"
 
 export interface IncidentNotificationPayload {
 	customer_code: string
-	n8n_workflow_id: string
+	shuffle_workflow_id: string
 	enabled: boolean
 }
 

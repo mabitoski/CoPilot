@@ -51,7 +51,7 @@ class AlertCreationSettings(SQLModel, table=True):
     misp_url: Optional[str] = Field(max_length=1024)
     opencti_url: Optional[str] = Field(max_length=1024)
     custom_message: Optional[str] = Field(max_length=1024)
-    n8n_endpoint: Optional[str] = Field(max_length=1024)
+    shuffle_endpoint: Optional[str] = Field(max_length=1024)
     nvd_url: Optional[str] = Field(
         default="https://services.nvd.nist.gov/rest/json/cves/2.0?cveId",
         max_length=1024,
