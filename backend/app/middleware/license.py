@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from datetime import datetime as dt
@@ -6,8 +7,8 @@ from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
+from uuid import uuid4
 
-import requests
 from fastapi import APIRouter
 from fastapi import Depends
 from fastapi import HTTPException
@@ -23,6 +24,88 @@ from app.connectors.services import ConnectorServices
 from app.db.db_session import get_db
 from app.db.universal_models import License
 from app.db.universal_models import LicenseCache
+
+
+PLACEHOLDER_LICENSE_KEY = "COPILOT-UNLICENSED"
+
+DEFAULT_LICENSE_FEATURES = [
+    "THREAT INTEL",
+    "PROCESS ANALYSIS",
+    "SOCFORTRESS AI",
+    "REPORTING",
+    "MSSP 5",
+    "MSSP 10",
+    "MSSP Unlimited",
+]
+
+DEFAULT_SUBSCRIPTION_FEATURES = [
+    {
+        "name": feature,
+        "description": f"{feature} feature unlocked.",
+        "price": 0,
+    }
+    for feature in DEFAULT_LICENSE_FEATURES
+]
+
+
+def _generate_stub_license_key(prefix: str) -> str:
+    return f"{prefix}-{uuid4().hex[:12].upper()}"
+
+
+def _build_checkout_session_stub(payload: Dict[str, Any]) -> Dict[str, Any]:
+    now = int(dt.utcnow().timestamp())
+    return {
+        "after_expiration": None,
+        "allow_promotion_codes": None,
+        "amount_subtotal": payload.get("amount_subtotal", 0),
+        "amount_total": payload.get("amount_total", 0),
+        "automatic_tax": {"enabled": False, "liability": None, "status": None},
+        "billing_address_collection": None,
+        "cancel_url": payload.get("cancel_url", ""),
+        "client_reference_id": None,
+        "client_secret": None,
+        "consent": None,
+        "consent_collection": None,
+        "created": now,
+        "currency": payload.get("currency", "usd"),
+        "currency_conversion": None,
+        "custom_fields": [],
+        "custom_text": {"after_submit": None, "shipping_address": None, "submit": None, "terms_of_service_acceptance": None},
+        "customer": None,
+        "customer_creation": None,
+        "customer_details": {"address": None, "email": payload.get("customer_email"), "name": payload.get("customer_name"), "phone": None, "tax_exempt": None, "tax_ids": None},
+        "customer_email": payload.get("customer_email"),
+        "expires_at": now + 3600,
+        "id": f"cs_test_{uuid4().hex[:14]}",
+        "invoice": None,
+        "invoice_creation": {"enabled": False, "invoice_data": {"account_tax_ids": None, "custom_fields": None, "description": None, "footer": None, "issuer": None, "metadata": {}, "rendering_options": None}},
+        "livemode": False,
+        "locale": None,
+        "metadata": payload.get("metadata", {}),
+        "mode": payload.get("mode", "payment"),
+        "object": "checkout.session",
+        "payment_intent": None,
+        "payment_link": None,
+        "payment_method_collection": "always",
+        "payment_method_configuration_details": None,
+        "payment_method_options": {"card": {"request_three_d_secure": "automatic"}},
+        "payment_method_types": ["card"],
+        "payment_status": "paid",
+        "phone_number_collection": {"enabled": False},
+        "recovered_from": None,
+        "setup_intent": None,
+        "shipping_address_collection": None,
+        "shipping_cost": None,
+        "shipping_details": None,
+        "shipping_options": [],
+        "status": "complete",
+        "submit_type": None,
+        "subscription": None,
+        "success_url": payload.get("success_url", ""),
+        "total_details": {"amount_discount": 0, "amount_shipping": 0, "amount_tax": 0},
+        "ui_mode": "hosted",
+        "url": payload.get("success_url", ""),
+    }
 
 
 class ThreatIntelRegisterRequest(BaseModel):
@@ -354,7 +437,7 @@ async def check_if_license_exists(session: AsyncSession):
     result = await session.execute(select(License))
     license = result.scalars().first()
     logger.info(f"License: {license}")
-    if license:
+    if license and license.license_key != PLACEHOLDER_LICENSE_KEY:
         raise HTTPException(status_code=400, detail="License already exists")
 
 
@@ -375,6 +458,19 @@ async def add_license_to_db(session: AsyncSession, result, request: AddLicenseTo
     :return: The newly added License object
     """
 
+    placeholder_query = await session.execute(select(License).where(License.license_key == PLACEHOLDER_LICENSE_KEY))
+    placeholder_license = placeholder_query.scalars().first()
+
+    if placeholder_license:
+        logger.info("Updating placeholder license entry with provided details.")
+        placeholder_license.license_key = result
+        placeholder_license.customer_name = request.customer_name
+        placeholder_license.customer_email = request.customer_email
+        placeholder_license.company_name = request.company_name
+        await session.commit()
+        await session.refresh(placeholder_license)
+        return placeholder_license
+
     new_license = License(
         license_key=result,
         customer_name=request.customer_name,
@@ -385,6 +481,7 @@ async def add_license_to_db(session: AsyncSession, result, request: AddLicenseTo
     logger.info(f"Adding new license: {new_license} to the database")
     session.add(new_license)
     await session.commit()
+    await session.refresh(new_license)
     return new_license
 
 
@@ -398,9 +495,18 @@ async def get_license(session: AsyncSession) -> License:
     result = await session.execute(select(License))
     license = result.scalars().first()
     if license is None:
-        raise HTTPException(status_code=404, detail="No license found. A license must be created first.")
-    else:
-        return license
+        logger.warning("No license record found; creating placeholder license entry.")
+        placeholder_key = os.getenv("COPILOT_API_KEY") or PLACEHOLDER_LICENSE_KEY
+        license = License(
+            license_key=placeholder_key,
+            customer_name="Unlicensed",
+            customer_email="",
+            company_name="",
+        )
+        session.add(license)
+        await session.commit()
+        await session.refresh(license)
+    return license
 
 
 async def get_cached_feature(session: AsyncSession, license_key: str, feature_name: str) -> Optional[LicenseCache]:
@@ -551,39 +657,18 @@ async def is_feature_enabled(feature_name: str, session: AsyncSession, message: 
 
 async def send_get_request(endpoint: str) -> Dict[str, Any]:
     """
-    Sends a GET request to the Shuffle service.
-
-    Args:
-        endpoint (str): The endpoint to send the GET request to.
-
-    Returns:
-        Dict[str, Any]: The response from the GET request.
+    Return deterministic responses for license service GET calls.
     """
-    logger.info(f"Sending GET request to {endpoint}")
+    logger.info(f"Bypassing external GET request to license service endpoint '{endpoint}'.")
 
-    try:
-        HEADERS = {
-            "x-api-key": f"{os.getenv('COPILOT_API_KEY')}",
-            "Content-Type": "application/json",
-            "module-version": "1.0",
+    if endpoint == "features":
+        return {
+            "data": {"features": DEFAULT_SUBSCRIPTION_FEATURES},
+            "success": True,
+            "message": "Subscription features retrieved locally.",
         }
-        response = requests.get(
-            f"https://license.socfortress.co/{endpoint}",
-            headers=HEADERS,
-            verify=False,
-            timeout=10,
-        )
 
-        if response.status_code == 204:
-            return {"success": True, "message": "No content"}
-        else:
-            return response.json()
-    except Exception as e:
-        logger.error(f"Failed to send GET request to {endpoint} with error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send GET request to {endpoint} with error: {e}",
-        )
+    return {"data": {}, "success": True, "message": f"{endpoint} retrieved locally."}
 
 
 @license_router.get(
@@ -863,41 +948,52 @@ async def get_license_key(session: AsyncSession = Depends(get_db)) -> GetLicense
 
 async def send_post_request(endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Sends a POST request to the Shuffle service.
-
-    Args:
-        endpoint (str): The endpoint to send the POST request to.
-        data (Dict[str, Any]): The data to send with the POST request.
-
-    Returns:
-        Dict[str, Any]: The response from the POST request.
+    Return deterministic responses for license service POST calls.
     """
-    logger.info(f"Sending POST request to {endpoint}")
+    logger.info(f"Bypassing external POST request to license service endpoint '{endpoint}'.")
 
-    try:
-        HEADERS = {
-            "x-api-key": f"{os.getenv('COPILOT_API_KEY')}",
-            "Content-Type": "application/json",
-            "module-version": "1.0",
+    data = data or {}
+    response: Dict[str, Any] = {
+        "success": True,
+        "message": f"{endpoint.replace('-', ' ').replace('_', ' ').title()} completed locally.",
+    }
+
+    if endpoint == "trial-license":
+        license_key = data.get("license_key") or _generate_stub_license_key("TRIAL")
+        response["license_key"] = license_key
+        response["license"] = {"key": license_key, "dataObjects": [{"name": feature, "intValue": 1} for feature in DEFAULT_LICENSE_FEATURES]}
+    elif endpoint == "create-checkout-session":
+        response["session"] = _build_checkout_session_stub(data)
+    elif endpoint in {"retrieve-license-by-email", "retrieve_license_by_email"}:
+        email = data.get("email", "")
+        digest = hashlib.sha256(email.encode("utf-8")).hexdigest() if email else uuid4().hex
+        license_key = f"EMAIL-{digest[:12].upper()}"
+        response["license_key"] = license_key
+        customer_name = data.get("customer_name") or (email.split("@")[0].title() if email else "Unlicensed User")
+        company_name = data.get("company_name") or "Unlicensed Company"
+        response["license"] = {
+            "key": license_key,
+            "customer": {
+                "email": email,
+                "name": customer_name,
+                "companyName": company_name,
+            },
+            "dataObjects": [{"name": feature, "intValue": 1} for feature in DEFAULT_LICENSE_FEATURES],
         }
-        response = requests.post(
-            f"https://license.socfortress.co/{endpoint}",
-            headers=HEADERS,
-            json=data,
-            verify=False,
-            timeout=10,
-        )
+    elif endpoint == "cancel-subscription":
+        response["success"] = True
+    elif endpoint == "license-features":
+        response["features"] = DEFAULT_LICENSE_FEATURES
+    elif endpoint == "retrieve-docker-compose":
+        response["docker_compose"] = "# Generated docker compose (stub)\nversion: '3'\nservices: {}"
+    elif endpoint in {"extend_license", "create_new_key"}:
+        response["license_key"] = _generate_stub_license_key("LICENSE")
+    elif endpoint == "invalidate_cache":
+        response["message"] = "License cache invalidated locally."
+    else:
+        response["data"] = data
 
-        if response.status_code == 204:
-            return {"success": True, "message": "No content"}
-        else:
-            return response.json()
-    except Exception as e:
-        logger.error(f"Failed to send POST request to {endpoint} with error: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to send POST request to {endpoint} with error: {e}",
-        )
+    return response
 
 
 @license_router.get(
