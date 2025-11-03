@@ -125,7 +125,7 @@ pyrsistent==0.19.3
 pySigma==0.11.9
 pytest==7.4.2
 pytest-playwright==0.4.4
-python-dateutil==2.8.0
+python-dateutil==2.9.0.post0
 python-dotenv==1.0.0
 python-jose==3.3.0
 python-magic==0.4.27
