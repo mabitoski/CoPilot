@@ -1,50 +1,36 @@
-FROM debian:11
+FROM python:3.11-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 # Set environment variable to use pure-Python implementation
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
-# Update the package lists
-RUN apt-get update
-
-# Install necessary dependencies
-RUN apt-get install -y \
+# Install necessary system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
     curl \
     gnupg \
-    lsb-release
-
-# Add the deadsnakes PPA
-RUN echo "deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main" | tee /etc/apt/sources.list.d/focal.list
-RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F23C5A6CF475977595C89F51BA6932366A755776
-
-# Update the package lists
-RUN apt-get update
-
-# Install Python 3.11, pip and venv
-RUN apt-get install -y python3.11 python3-pip python3.11-venv python3.11-dev
+    lsb-release \
+    wkhtmltopdf \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create a Python virtual environment and activate it
-RUN python3.11 -m venv /opt/venv
+RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install setuptools
-RUN /opt/venv/bin/pip install setuptools
+# Upgrade pip and setuptools
+RUN pip install --upgrade pip setuptools
 
 # Install your application's dependencies
 WORKDIR /opt/copilot/backend
 COPY requirements.txt ./
-RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Install required browsers for playwright
 RUN playwright install-deps
 RUN playwright install
-
-# Install wkhtmltopdf
-RUN apt-get install -y wkhtmltopdf
 
 # Copy your application into the Docker image
 WORKDIR /opt/copilot/backend
