@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1
 # Set environment variable to use pure-Python implementation
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
-# Install necessary system dependencies
+# Install necessary system dependencies including build tools for Python packages with C extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
@@ -14,6 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     lsb-release \
     wkhtmltopdf \
+    gcc \
+    g++ \
+    libc6-dev \
+    make \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a Python virtual environment and activate it
@@ -31,6 +36,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Install required browsers for playwright
 RUN playwright install-deps
 RUN playwright install
+
+# Clean up build dependencies to reduce image size
+RUN apt-get purge -y --auto-remove gcc g++ libc6-dev make build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy your application into the Docker image
 WORKDIR /opt/copilot/backend
