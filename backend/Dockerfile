@@ -1,46 +1,46 @@
-FROM python:3.10-slim-bullseye
+FROM debian:12-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONUNBUFFERED 1
 # Set environment variable to use pure-Python implementation
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
-# Install necessary system dependencies including build tools for Python packages with C extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Update the package lists
+RUN apt-get update
+
+# Install necessary dependencies
+RUN apt-get install -y \
     apt-transport-https \
     ca-certificates \
     curl \
     gnupg \
-    lsb-release \
-    wkhtmltopdf \
-    gcc \
-    g++ \
-    libc6-dev \
-    make \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    lsb-release
+
+# Update the package lists
+RUN apt-get update
+
+# Install Python 3.11, pip and venv
+RUN apt-get install -y python3.11 python3-pip python3.11-venv python3.11-dev
 
 # Create a Python virtual environment and activate it
-RUN python -m venv /opt/venv
+RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Upgrade pip and setuptools
-RUN pip install --upgrade pip setuptools
+# Install setuptools
+RUN /opt/venv/bin/pip install setuptools
 
 # Install your application's dependencies
 WORKDIR /opt/copilot/backend
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Install required browsers for playwright
 RUN playwright install-deps
 RUN playwright install
 
-# Clean up build dependencies to reduce image size
-RUN apt-get purge -y --auto-remove gcc g++ libc6-dev make build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Install wkhtmltopdf
+RUN apt-get install -y wkhtmltopdf libmagic1
 
 # Copy your application into the Docker image
 WORKDIR /opt/copilot/backend
