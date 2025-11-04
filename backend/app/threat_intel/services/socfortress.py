@@ -1,10 +1,16 @@
+import asyncio
+import json
+import os
 import re
 from typing import Any
 from typing import Dict
+from typing import Optional
 
 import httpx
 from fastapi import HTTPException
 from loguru import logger
+import openai
+from openai.error import OpenAIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.connectors.utils import get_connector_info_from_db
@@ -364,27 +370,105 @@ async def get_ai_alert_response(
     request: SocfortressAiAlertRequest,
 ) -> SocfortressAiAlertResponse:
     """
-    Retrieves IoC response from Socfortress Threat Intel API.
+    Generates an AI analysis for the alert payload using OpenAI while preserving the
+    existing response contract expected by the frontend.
 
     Args:
-        request (SocfortressAiAlertRequest): The request object containing the IoC data.
-        session (AsyncSession): The async session object for making HTTP requests.
+        license_key (str): Legacy argument retained for signature compatibility.
+        request (SocfortressAiAlertRequest): The AI alert request containing the alert payload.
 
     Returns:
-        SocfortressAiAlertResponse: The response object containing the IoC data and success status.
+        SocfortressAiAlertResponse: Structured analysis compatible with the original interface.
     """
-    url = "https://ai.socfortress.co/analyze-alert"
+    del license_key  # No longer required now that OpenAI handles the analysis.
 
-    response_data = await invoke_socfortress_ai_alert_api(license_key, url, request)
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        logger.error("OPENAI_API_KEY environment variable not configured.")
+        raise HTTPException(status_code=500, detail="OpenAI integration is not configured.")
 
-    # If message is `Forbidden`, raise an HTTPException
-    if response_data.get("message") == "Forbidden":
-        raise HTTPException(
-            status_code=403,
-            detail="Forbidden access to the Socfortress AI Alert API",
+    model = os.getenv("OPENAI_MODEL", "gpt-4o")
+    openai.api_key = api_key
+
+    alert_payload = request.alert_payload
+
+    system_prompt = (
+        "You are SOCFORTRESS AI Analyst, an expert security analyst who reviews alerts and writes concise, actionable summaries. "
+        "Always respond with valid JSON containing the keys: message (string), success (boolean), analysis (markdown string), "
+        "confidence_score (float between 0 and 1), risk_evaluation (one of: low, medium, high), "
+        "threat_indicators (markdown string or null), base64_decoded (string or null). "
+        "Use markdown in analysis and threat_indicators for readability. If no base64 content is provided, return null."
+    )
+
+    user_prompt = (
+        "Analyse the following security alert payload and produce the required JSON response. "
+        "Highlight the most important observations, potential threats, and recommended next actions. "
+        "If the payload includes suspicious encoded content, decode it and provide it in base64_decoded. "
+        "Input alert payload:\n"
+        f"{json.dumps(alert_payload, indent=2, ensure_ascii=False)}"
+    )
+
+    def _perform_openai_call() -> Dict[str, Any]:
+        completion = openai.ChatCompletion.create(
+            model=model,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
         )
+        return completion
 
-    return SocfortressAiAlertResponse(**response_data)
+    try:
+        completion = await asyncio.to_thread(_perform_openai_call)
+    except OpenAIError as exc:
+        logger.error(f"OpenAI API error while analysing alert: {exc}")
+        raise HTTPException(status_code=502, detail=f"OpenAI API error: {exc}")
+    except Exception as exc:  # pragma: no cover
+        logger.error(f"Unexpected error during OpenAI request: {exc}")
+        raise HTTPException(status_code=500, detail="Unexpected error during OpenAI analysis.")
+
+    try:
+        content = completion["choices"][0]["message"]["content"]
+    except (KeyError, IndexError) as exc:
+        logger.error(f"Unexpected OpenAI response format: {completion}")
+        raise HTTPException(status_code=502, detail="OpenAI response format is invalid.") from exc
+
+    try:
+        parsed_response: Dict[str, Any] = json.loads(content)
+    except json.JSONDecodeError as exc:
+        logger.error(f"Failed to decode OpenAI response: {content}")
+        raise HTTPException(status_code=502, detail="Failed to parse OpenAI response.") from exc
+
+    analysis = parsed_response.get("analysis")
+    if not isinstance(analysis, str) or not analysis.strip():
+        logger.error(f"OpenAI response missing valid analysis field: {parsed_response}")
+        raise HTTPException(status_code=502, detail="OpenAI response missing required analysis content.")
+
+    confidence_score = _coerce_confidence_score(parsed_response.get("confidence_score"))
+    risk_evaluation = _coerce_risk_level(parsed_response.get("risk_evaluation"))
+    message = parsed_response.get("message") or "OpenAI analysis completed."
+    success = parsed_response.get("success")
+    if not isinstance(success, bool):
+        success = True
+
+    base64_decoded = parsed_response.get("base64_decoded")
+    if base64_decoded is not None and not isinstance(base64_decoded, str):
+        base64_decoded = str(base64_decoded)
+
+    threat_indicators = parsed_response.get("threat_indicators")
+    if threat_indicators is not None and not isinstance(threat_indicators, str):
+        threat_indicators = str(threat_indicators)
+
+    return SocfortressAiAlertResponse(
+        message=message,
+        success=success,
+        analysis=analysis.strip(),
+        base64_decoded=base64_decoded,
+        confidence_score=confidence_score,
+        threat_indicators=threat_indicators,
+        risk_evaluation=risk_evaluation,
+    )
 
 
 async def get_wazuh_exclusion_rule_response(
@@ -588,3 +672,34 @@ async def socfortress_velociraptor_recommendation_lookup(
         license_key=lincense_key,
         request=request,
     )
+
+
+def _coerce_confidence_score(raw_value: Any) -> float:
+    """
+    Convert the OpenAI confidence score into a float within [0, 1].
+    """
+    default_confidence = 0.5
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError):
+        logger.debug(f"Using default confidence score. Could not convert value: {raw_value}")
+        return default_confidence
+
+    clamped_value = max(0.0, min(1.0, value))
+    if clamped_value != value:
+        logger.debug(f"Clamped confidence score from {value} to {clamped_value}")
+    return clamped_value
+
+
+def _coerce_risk_level(raw_value: Any) -> Optional[str]:
+    """
+    Normalize the risk evaluation returned by OpenAI.
+    """
+    if not isinstance(raw_value, str):
+        return None
+
+    normalized = raw_value.strip().lower()
+    if normalized not in {"low", "medium", "high"}:
+        logger.debug(f"Unexpected risk level '{raw_value}'. Returning None.")
+        return None
+    return normalized

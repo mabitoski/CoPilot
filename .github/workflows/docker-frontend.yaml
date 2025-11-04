@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - 'main'
-      - 'new-licence'
+      - 'new-mcp-server'
     tags:
       - 'v*'
 #  pull_request:
