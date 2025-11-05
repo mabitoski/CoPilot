@@ -1,53 +1,60 @@
-# syntax=docker/dockerfile:1.4
+FROM debian:12-slim
 
-FROM python:3.11-slim-bookworm AS runtime
-
-# Prevent Python from writing .pyc files and ensure unbuffered output
+# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
-# System dependencies (single layer, cleaned afterwards)
+# Update package lists and install all dependencies in one layer for efficiency
 RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     ca-certificates \
     curl \
     gnupg \
     lsb-release \
+    python3.11 \
+    python3-pip \
+    python3.11-venv \
+    python3.11-dev \
     wkhtmltopdf \
     libmagic1 \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:${PATH}"
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install setuptools in one step
+RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel
 
 WORKDIR /opt/copilot/backend
 
-# Install Python dependencies first to maximise layer cache reuse
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip setuptools wheel && \
-    pip install -r requirements.txt
+# Copy only requirements first for better caching
+COPY requirements.txt ./
+
+# Install Python dependencies
+RUN /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright dependencies and browsers
-RUN playwright install-deps && playwright install
+RUN playwright install-deps && \
+    playwright install
 
 # Copy application source
 COPY . .
 COPY wait-for-it.sh /usr/wait-for-it.sh
 RUN chmod +x /usr/wait-for-it.sh
 
-# Ensure file-store exists at runtime
+# Create file-store folder
 RUN mkdir -p file-store
 
-# Expose application port
+# Expose ports
 EXPOSE 5000
 
-# Default server binding
 ENV SERVER_IP=0.0.0.0
 
-# Connector defaults
+# Connector Credentials
+# ! SETTING UP YOUR CONNECTORS DEMOs https://www.youtube.com/@taylorwalton_socfortress/videos! #
 ENV WAZUH_INDEXER_URL=https://1.1.1.1:9200 \
     WAZUH_INDEXER_USERNAME=admin \
     WAZUH_INDEXER_PASSWORD=admin \
@@ -83,7 +90,8 @@ ENV WAZUH_INDEXER_URL=https://1.1.1.1:9200 \
     ALERT_CREATION_PROVISIONING_URL=http://1.1.1.1
 
 ARG COPILOT_API_KEY
-ENV COPILOT_API_KEY=${COPILOT_API_KEY}
+ENV COPILOT_API_KEY=$COPILOT_API_KEY
 
-# Entrypoint waits for MySQL before launching the app
+# Run your application
+# Use wait-for-it.sh to wait for the MySQL service to be ready before starting your application
 CMD ["/usr/wait-for-it.sh", "copilot-mysql:3306", "--", "/opt/venv/bin/python", "copilot.py"]
