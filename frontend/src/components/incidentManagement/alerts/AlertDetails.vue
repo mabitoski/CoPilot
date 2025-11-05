@@ -18,6 +18,11 @@
 					<AlertTimeline :alert />
 				</div>
 			</n-tab-pane>
+			<n-tab-pane name="Correlation" tab="Correlation" display-directive="show:lazy">
+				<div class="p-7 pt-4">
+					<AlertCorrelation v-if="alert" :alert="alert" />
+				</div>
+			</n-tab-pane>
 			<n-tab-pane name="Assets" tab="Assets" display-directive="show:lazy">
 				<div class="p-7 pt-4">
 					<AlertAssetsList :assets="alert.assets" />
@@ -61,6 +66,7 @@ const AlertAssetsList = defineAsyncComponent(() => import("./AlertAssetsList.vue
 const AlertCommentsList = defineAsyncComponent(() => import("./AlertCommentsList.vue"))
 const AlertIoCsList = defineAsyncComponent(() => import("./AlertIoCsList.vue"))
 const AlertOverview = defineAsyncComponent(() => import("./AlertOverview.vue"))
+const AlertCorrelation = defineAsyncComponent(() => import("./AlertCorrelation.vue"))
 
 const { alertData, alertId } = toRefs(props)
 
