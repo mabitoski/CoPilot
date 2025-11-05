@@ -1,13 +1,21 @@
+import asyncio
+import json
+import os
+import re
+import time
 from enum import Enum
+from typing import Any
 from typing import Dict
 from typing import Optional
 
-import httpx
 from loguru import logger
+import openai
+from openai.error import OpenAIError
 
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPQueryRequest
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPQueryResponse
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPServerType
+from app.integrations.copilot_mcp.schema.copilot_mcp import StructuredAgentResponse
 
 
 class MCPServiceType(str, Enum):
@@ -99,77 +107,144 @@ class MCPService:
     @classmethod
     async def execute_query(cls, data: MCPQueryRequest, license_key: Optional[str] = None) -> MCPQueryResponse:
         """
-        Execute a query on the appropriate MCP server based on the request.
+        Execute a chatbot query using OpenAI while preserving the MCP response contract.
+        """
+        del license_key  # Legacy parameter retained for compatibility.
 
-        Args:
-            data: The MCP query request containing the server type and query
-            license_key: Optional license key for cloud services authentication
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.error("OPENAI_API_KEY environment variable not configured.")
+            return MCPQueryResponse(
+                message="OpenAI integration is not configured.",
+                success=False,
+                result=None,
+                structured_result=None,
+                execution_time=0.0,
+            )
 
-        Returns:
-            MCPQueryResponse: The response from the MCP server
+        model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        openai.api_key = api_key
+
+        system_prompt = (
+            "You are the SOCFORTRESS CoPilot assistant. Provide clear, actionable responses in Markdown. "
+            "When relevant, include bullet lists or tables. Use concise explanations tailored to SOC analysts. "
+            "Always return valid JSON with the keys: response (string) and optional thinking_process (string)."
+        )
+
+        server_context = (
+            f"The user selected the '{data.mcp_server.value}' knowledge domain. "
+            "Use this as context to shape your answer, but you do not need to access external tools."
+        )
+        verbose_hint = "The user requested verbose output with more detailed reasoning." if data.verbose else ""
+
+        user_prompt = (
+            f"{server_context} {verbose_hint}\n\n"
+            "User question:\n"
+            f"{data.input}"
+        ).strip()
+
+        def _perform_openai_call() -> Dict[str, Any]:
+            completion = openai.ChatCompletion.create(
+                model=model,
+                temperature=0.3,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            return completion
+
+        start_time = time.perf_counter()
+        try:
+            completion = await asyncio.to_thread(_perform_openai_call)
+        except OpenAIError as exc:
+            logger.error(f"OpenAI API error while handling chatbot query: {exc}")
+            return MCPQueryResponse(
+                message=f"OpenAI API error: {exc}",
+                success=False,
+                result=None,
+                structured_result=None,
+                execution_time=0.0,
+            )
+        except Exception as exc:  # pragma: no cover
+            logger.error(f"Unexpected error during OpenAI chatbot request: {exc}")
+            return MCPQueryResponse(
+                message="Unexpected error during OpenAI processing.",
+                success=False,
+                result=None,
+                structured_result=None,
+                execution_time=0.0,
+            )
+
+        execution_time = time.perf_counter() - start_time
+
+        try:
+            content = completion["choices"][0]["message"]["content"]
+        except (KeyError, IndexError):
+            logger.error(f"Unexpected OpenAI response format: {completion}")
+            return MCPQueryResponse(
+                message="OpenAI response format is invalid.",
+                success=False,
+                result=None,
+                structured_result=None,
+                execution_time=execution_time,
+            )
+
+        structured_result = None
+        result: Optional[Any] = None
+
+        try:
+            parsed = cls._parse_openai_json_payload(content)
+            structured_result = StructuredAgentResponse(
+                response=parsed["response"],
+                thinking_process=parsed.get("thinking_process"),
+            )
+            result = {
+                "response": structured_result.response,
+                "thinking_process": structured_result.thinking_process,
+            }
+        except ValueError:
+            logger.debug("OpenAI response was not JSON-formatted; returning raw content.")
+            result = content
+
+        return MCPQueryResponse(
+            message="Query processed successfully.",
+            success=True,
+            result=result,
+            structured_result=structured_result,
+            execution_time=execution_time,
+        )
+
+    @staticmethod
+    def _parse_openai_json_payload(raw_content: str) -> Dict[str, Any]:
+        """
+        Extract JSON payload from OpenAI response content, handling Markdown fences.
 
         Raises:
-            httpx.HTTPError: If the HTTP request fails
-            ValueError: If the server type is not supported
+            ValueError: If payload cannot be parsed or lacks required fields.
         """
-        try:
-            # Get the full URL for the specified server
-            full_url = cls.build_full_url(data.mcp_server)
-            is_cloud = cls.is_cloud_service(data.mcp_server)
+        if not isinstance(raw_content, str):
+            raise ValueError("OpenAI response content must be a string.")
 
-            logger.info(f"Sending MCP query to {data.mcp_server.value} ({'cloud' if is_cloud else 'local'}) at {full_url}")
-            logger.debug(f"Query data: {data.dict()}")
+        text = raw_content.strip()
+        fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.S)
+        if fence_match:
+            text = fence_match.group(1)
 
-            # Set different timeout for cloud vs local services
-            timeout = 300 if is_cloud else 300
+        decoder = json.JSONDecoder(strict=False)
+        parsed = decoder.decode(text)
 
-            # Prepare headers
-            headers = {"Content-Type": "application/json"}
+        if not isinstance(parsed, dict):
+            raise ValueError("OpenAI response must be a JSON object.")
 
-            # Add license key as x-api-key header for cloud services
-            if is_cloud and license_key:
-                headers["x-api-key"] = license_key
-                logger.debug("Added x-api-key header for cloud service")
-            elif is_cloud and not license_key:
-                logger.warning(f"No license key provided for cloud service {data.mcp_server.value}")
+        if "response" not in parsed or parsed["response"] in (None, ""):
+            raise ValueError("OpenAI response missing 'response' field.")
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    full_url,
-                    json=data.dict(),
-                    headers=headers,
-                    timeout=timeout,
-                )
+        parsed["response"] = str(parsed["response"])
+        if parsed.get("thinking_process") is not None:
+            parsed["thinking_process"] = str(parsed["thinking_process"])
 
-                # Raise an exception for HTTP error status codes
-                response.raise_for_status()
-
-                logger.info(f"Successfully received response from {data.mcp_server.value}: {response.json()}")
-                return MCPQueryResponse(**response.json())
-
-        except ValueError as e:
-            logger.error(f"Invalid server type: {str(e)}")
-            return MCPQueryResponse(message=f"Error: {str(e)}", success=False, result=None, structured_result=None, execution_time=0.0)
-
-        except httpx.HTTPError as e:
-            logger.error(f"HTTP error when querying {data.mcp_server.value}: {str(e)}")
-            return MCPQueryResponse(
-                message=f"HTTP error when querying {data.mcp_server.value}: {str(e)}",
-                success=False,
-                result=None,
-                structured_result=None,
-                execution_time=0.0,
-            )
-
-        except Exception as e:
-            logger.error(f"Unexpected error when querying {data.mcp_server.value}: {str(e)}")
-            return MCPQueryResponse(
-                message=f"Unexpected error: {str(e)}",
-                success=False,
-                result=None,
-                structured_result=None,
-                execution_time=0.0,
-            )
+        return parsed
 
     @classmethod
     def add_local_service(cls, server_type: MCPServerType, endpoint: str) -> None:
