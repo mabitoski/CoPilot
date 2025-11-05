@@ -5,7 +5,7 @@ import type {
 	AlertComment,
 	AlertContext,
 	AlertDetails,
-\tAlertCorrelation,
+	AlertCorrelation,
 	AlertsFilter,
 	AlertStatus,
 	AlertTag,
