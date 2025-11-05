@@ -18,14 +18,14 @@
 					<n-scrollbar class="grow">
 						<div class="agents-list flex flex-grow flex-col gap-3">
 							<template v-if="agentsFiltered.length">
-					<AgentCard
-						v-for="agent in itemsPaginated"
-						:key="agent.agent_id"
-						:agent
-						:customer-options="customerSelectOptions"
-						show-actions
-						hoverable
-						clickable
+								<AgentCard
+									v-for="agent in itemsPaginated"
+									:key="agent.agent_id"
+									:agent
+									:customer-options="customerSelectOptions"
+									show-actions
+									hoverable
+									clickable
 									class="item-appear item-appear-bottom item-appear-005"
 									@delete="syncAgents()"
 									@click.stop="gotoAgent(agent.agent_id)"

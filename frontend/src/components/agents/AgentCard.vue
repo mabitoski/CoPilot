@@ -84,20 +84,20 @@
 			</div>
 		</div>
 	</CardEntity>
- </template>
+</template>
 
 <script setup lang="ts">
-import type { Agent } from "@/types/agents.d"
 import type { SelectOption } from "naive-ui"
+import type { Agent } from "@/types/agents.d"
 import { NButton, NSelect, NTag, NTooltip, useDialog, useMessage } from "naive-ui"
 import { computed, ref, toRefs } from "vue"
+import Api from "@/api"
 import CardEntity from "@/components/common/cards/CardEntity.vue"
 import Icon from "@/components/common/Icon.vue"
 import { useSettingsStore } from "@/stores/settings"
 import { AgentStatus } from "@/types/agents.d"
 import dayjs from "@/utils/dayjs"
 import { handleDeleteAgent, toggleAgentCritical } from "./utils"
-import Api from "@/api"
 
 const props = defineProps<{
 	agent: Agent
@@ -157,13 +157,13 @@ function toggleCritical(agentId: string, criticalStatus: boolean) {
 		cbBefore: () => {
 			loading.value = true
 		},
-		cbSuccess: () => {
-			agent.value.critical_asset = !criticalStatus
-		},
-		cbAfter: () => {
-			loading.value = false
-		}
-		})
+	cbSuccess: () => {
+		agent.value.critical_asset = !criticalStatus
+	},
+	cbAfter: () => {
+		loading.value = false
+	}
+	})
 }
 
 function handleAssignCustomer(value: string) {
