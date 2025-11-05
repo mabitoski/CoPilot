@@ -45,6 +45,7 @@ RUN apk add openssl
 
 # Set environment variables
 ENV SERVER_HOST=localhost
+ENV SERVER_PORT=443
 ENV TLS_CERT_PATH=/etc/nginx/certs.d/server.crt
 ENV TLS_KEY_PATH=/etc/nginx/certs.d/server.key
 
@@ -53,7 +54,8 @@ COPY build/docker-entrypoint.d/90-copilot-ssl.sh /docker-entrypoint.d/90-copilot
 RUN chmod +x /docker-entrypoint.d/90-copilot-ssl.sh
 
 # Setup template
-RUN mkdir /etc/nginx/templates
+RUN mkdir -p /etc/nginx/templates /etc/nginx/certs /etc/nginx/certs.d
+COPY build/certs/dhparams.pem /etc/nginx/certs/dhparams.pem
 COPY build/etc/nginx/sites-enabled/default.conf /etc/nginx/templates/default.conf.template
 
 # Copy built static files from the builder stage

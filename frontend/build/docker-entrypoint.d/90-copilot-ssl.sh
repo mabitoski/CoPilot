@@ -11,7 +11,7 @@ fi
 if [[ ! -f "${TLS_CERT_PATH}" || ! -f "${TLS_KEY_PATH}" ]]; then
     echo "No TLS certs found. Generating...."
     mkdir -p $(dirname "${TLS_CERT_PATH}")
-    openssl req -x509 -subj "/CN=${SERVER_HOST}" -nodes -newkey rsa:4096 -keyout "${TLS_KEY_PATH}" -out "${TLS_CERT_PATH}" -days 365
+    openssl req -x509 -subj "/CN=${SERVER_HOST}" -nodes -newkey rsa:2048 -keyout "${TLS_KEY_PATH}" -out "${TLS_CERT_PATH}" -days 365
 else
     echo "TLS certificates found"
 fi
