@@ -97,3 +97,51 @@ export interface AlertTimeline {
 		[key: string]: string | string[] | number | object
 	}
 }
+
+export interface AlertCorrelationAgent {
+	agent_id?: string | null
+	hostname?: string | null
+	ip_address?: string | null
+	os?: string | null
+	label?: string | null
+	wazuh_agent_status?: string | null
+	wazuh_last_seen?: string | null
+	velociraptor_id?: string | null
+	velociraptor_last_seen?: string | null
+	customer_code?: string | null
+	critical_asset?: boolean | null
+}
+
+export interface AlertCorrelationVulnerability {
+	id?: number | null
+	cve_id?: string | null
+	severity?: string | null
+	title?: string | null
+	status?: string | null
+	discovered_at?: string | null
+	epss_score?: string | null
+	epss_percentile?: string | null
+}
+
+export interface AlertCorrelationAlert {
+	index?: string | null
+	id?: string | null
+	timestamp?: string | null
+	rule_description?: string | null
+	syslog_level?: string | null
+	message?: string | null
+}
+
+export interface AlertCorrelationCase {
+	id: number
+	case_name: string
+	status?: string | null
+	created_at?: string | null
+}
+
+export interface AlertCorrelation {
+	agent?: AlertCorrelationAgent | null
+	vulnerabilities: AlertCorrelationVulnerability[]
+	recent_alerts: AlertCorrelationAlert[]
+	cases: AlertCorrelationCase[]
+}

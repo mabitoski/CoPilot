@@ -156,3 +156,53 @@ class AlertTimelineResponse(BaseModel):
     alert_timeline: List[Dict[str, Any]]
     success: bool
     message: str
+
+
+class AlertCorrelationAgent(BaseModel):
+    agent_id: Optional[str] = None
+    hostname: Optional[str] = None
+    ip_address: Optional[str] = None
+    os: Optional[str] = None
+    label: Optional[str] = None
+    wazuh_agent_status: Optional[str] = None
+    wazuh_last_seen: Optional[datetime] = None
+    velociraptor_id: Optional[str] = None
+    velociraptor_last_seen: Optional[datetime] = None
+    customer_code: Optional[str] = None
+    critical_asset: Optional[bool] = None
+
+
+class AlertCorrelationVulnerability(BaseModel):
+    id: Optional[int] = None
+    cve_id: Optional[str] = None
+    severity: Optional[str] = None
+    title: Optional[str] = None
+    status: Optional[str] = None
+    discovered_at: Optional[datetime] = None
+    epss_score: Optional[str] = None
+    epss_percentile: Optional[str] = None
+
+
+class AlertCorrelationAlert(BaseModel):
+    index: Optional[str] = None
+    id: Optional[str] = None
+    timestamp: Optional[str] = None
+    rule_description: Optional[str] = None
+    syslog_level: Optional[str] = None
+    message: Optional[str] = None
+
+
+class AlertCorrelationCase(BaseModel):
+    id: int
+    case_name: str
+    status: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class AlertCorrelationResponse(BaseModel):
+    success: bool
+    message: str
+    agent: Optional[AlertCorrelationAgent] = None
+    vulnerabilities: List[AlertCorrelationVulnerability] = []
+    recent_alerts: List[AlertCorrelationAlert] = []
+    cases: List[AlertCorrelationCase] = []

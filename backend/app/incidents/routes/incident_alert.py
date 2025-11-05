@@ -1,4 +1,7 @@
+import asyncio
 import os
+
+from typing import List
 
 from fastapi import APIRouter
 from fastapi import Depends
@@ -8,12 +11,23 @@ from fastapi import Query
 from fastapi import Security
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from app.active_response.routes.graylog import verify_graylog_header
 from app.active_response.schema.graylog import GraylogThresholdEventNotification
 from app.auth.utils import AuthHandler
 from app.db.db_session import get_db
 from app.incidents.schema.alert_collection import AlertsPayload
+from app.connectors.wazuh_indexer.schema.alerts import AlertsSearchBody
+from app.connectors.wazuh_indexer.schema.alerts import HostAlertsSearchBody
+from app.connectors.wazuh_indexer.services.alerts import collect_alerts_generic
+from app.agents.vulnerabilities.schema.vulnerabilities import AgentVulnerabilityOut
+from app.agents.vulnerabilities.services.vulnerabilities import get_vulnerabilities_by_agent
+from app.incidents.schema.incident_alert import AlertCorrelationAgent
+from app.incidents.schema.incident_alert import AlertCorrelationAlert
+from app.incidents.schema.incident_alert import AlertCorrelationCase
+from app.incidents.schema.incident_alert import AlertCorrelationResponse
+from app.incidents.schema.incident_alert import AlertCorrelationVulnerability
 from app.incidents.schema.incident_alert import AlertDetailsResponse
 from app.incidents.schema.incident_alert import AlertTimelineResponse
 from app.incidents.schema.incident_alert import AutoCreateAlertResponse
@@ -22,6 +36,7 @@ from app.incidents.schema.incident_alert import CreateAlertRequestRoute
 from app.incidents.schema.incident_alert import CreateAlertResponse
 from app.incidents.schema.incident_alert import CreatedAlertPayload
 from app.incidents.schema.incident_alert import IndexNamesResponse
+from app.db.universal_models import Agents
 from app.incidents.schema.velo_sigma import VelociraptorSigmaAlert
 from app.incidents.schema.velo_sigma import VelociraptorSigmaAlertResponse
 from app.incidents.schema.velo_sigma import VeloSigmaExclusionCreate
@@ -35,8 +50,10 @@ from app.incidents.services.alert_collection import get_original_alert_id
 from app.incidents.services.alert_collection import get_original_alert_index_name
 from app.incidents.services.incident_alert import create_alert
 from app.incidents.services.incident_alert import create_alert_full
+from app.incidents.services.incident_alert import retrieve_agent_details_from_db
 from app.incidents.services.incident_alert import get_single_alert_details
 from app.incidents.services.incident_alert import retrieve_alert_timeline
+from app.incidents.services.db_operations import list_cases_by_asset_name
 from app.incidents.services.velo_sigma import VeloSigmaExclusionService
 from app.incidents.services.velo_sigma import create_velo_sigma_alert
 
@@ -135,6 +152,30 @@ async def get_alert_timeline_route(
         message="Alert timeline retrieved",
         alert_timeline=await retrieve_alert_timeline(alert, session),
     )
+
+
+@incidents_alerts_router.post(
+    "/alert/correlation",
+    response_model=AlertCorrelationResponse,
+    description="Get correlated context for an alert",
+    dependencies=[Security(AuthHandler().require_any_scope("admin", "analyst"))],
+)
+async def get_alert_correlation_route(
+    alert: CreateAlertRequestRoute,
+    session: AsyncSession = Depends(get_db),
+) -> AlertCorrelationResponse:
+    try:
+        correlation_payload = await _build_alert_correlation(alert, session)
+        return AlertCorrelationResponse(
+            success=True,
+            message="Alert correlation data retrieved successfully",
+            **correlation_payload,
+        )
+    except HTTPException as exc:
+        raise exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error(f"Failed to gather alert correlation: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to gather alert correlation: {exc}")
 
 
 @incidents_alerts_router.post(
@@ -427,3 +468,115 @@ async def toggle_exclusion(
         message="Exclusion rule toggled successfully",
         exclusion_response=updated,
     )
+
+
+async def _build_alert_correlation(
+    alert: CreateAlertRequestRoute,
+    session: AsyncSession,
+) -> dict:
+    correlation_agent = None
+    vulnerabilities: List[AlertCorrelationVulnerability] = []
+    recent_alerts: List[AlertCorrelationAlert] = []
+    cases: List[AlertCorrelationCase] = []
+
+    alert_details = await get_single_alert_details(
+        CreateAlertRequest(index_name=alert.index_name, alert_id=alert.index_id),
+    )
+
+    alert_source = alert_details._source
+    hostname = getattr(alert_source, "agent_name", None) or getattr(alert_source, "hostname", None)
+
+    agent_record = None
+    if hostname:
+        agent_record = await retrieve_agent_details_from_db(hostname, session)
+
+    if not agent_record and alert.agent_id:
+        agent_result = await session.execute(select(Agents).filter(Agents.agent_id == alert.agent_id))
+        agent_record = agent_result.scalars().first()
+
+    if agent_record:
+        correlation_agent = AlertCorrelationAgent(
+            agent_id=agent_record.agent_id,
+            hostname=agent_record.hostname,
+            ip_address=agent_record.ip_address,
+            os=agent_record.os,
+            label=agent_record.label,
+            wazuh_agent_status=agent_record.wazuh_agent_status,
+            wazuh_last_seen=agent_record.wazuh_last_seen,
+            velociraptor_id=agent_record.velociraptor_id,
+            velociraptor_last_seen=agent_record.velociraptor_last_seen,
+            customer_code=agent_record.customer_code,
+            critical_asset=agent_record.critical_asset,
+        )
+
+        vuln_response = await get_vulnerabilities_by_agent(session, agent_record.agent_id)
+        if vuln_response.success and vuln_response.vulnerabilities:
+            severity_order = {"Critical": 0, "High": 1, "Medium": 2, "Low": 3}
+
+            def _vuln_sort_key(vuln: AgentVulnerabilityOut):
+                timestamp = vuln.discovered_at.timestamp() if vuln.discovered_at else 0
+                return severity_order.get(vuln.severity, 99), -timestamp
+
+            sorted_vulns = sorted(vuln_response.vulnerabilities, key=_vuln_sort_key)
+            for vuln in sorted_vulns[:5]:
+                vulnerabilities.append(
+                    AlertCorrelationVulnerability(
+                        id=vuln.id,
+                        cve_id=vuln.cve_id,
+                        severity=vuln.severity,
+                        title=vuln.title,
+                        status=vuln.status,
+                        discovered_at=vuln.discovered_at,
+                        epss_score=vuln.epss_score,
+                        epss_percentile=vuln.epss_percentile,
+                    ),
+                )
+
+    host_identifier = hostname or (agent_record.hostname if agent_record else None)
+    if host_identifier:
+        search_body = HostAlertsSearchBody(agent_name=host_identifier, size=10)
+        try:
+            alerts_response = await collect_alerts_generic(alert.index_name, search_body, is_host_specific=True)
+            if alerts_response.success and alerts_response.alerts:
+                for alert_item in alerts_response.alerts[:5]:
+                    source = alert_item.get("_source", {})
+                    timestamp = source.get("timestamp") or source.get("@timestamp")
+                    recent_alerts.append(
+                        AlertCorrelationAlert(
+                            index=alert_item.get("_index"),
+                            id=alert_item.get("_id"),
+                            timestamp=timestamp,
+                            rule_description=source.get("rule_description") or source.get("rule_name"),
+                            syslog_level=source.get("syslog_level"),
+                            message=source.get("message") or source.get("full_log"),
+                        ),
+                    )
+        except HTTPException as exc:
+            logger.warning(f"Failed to collect recent alerts for host {host_identifier}: {exc.detail}")
+
+        try:
+            case_results = await list_cases_by_asset_name(host_identifier, session)
+            if case_results:
+                for case in case_results:
+                    cases.append(
+                        AlertCorrelationCase(
+                            id=case.id,
+                            case_name=case.case_name,
+                            status=case.case_status,
+                            created_at=case.case_creation_time,
+                        ),
+                    )
+                cases.sort(
+                    key=lambda c: c.created_at.timestamp() if c.created_at else 0,
+                    reverse=True,
+                )
+                cases = cases[:5]
+        except HTTPException as exc:
+            logger.warning(f"Failed to collect cases for host {host_identifier}: {exc.detail}")
+
+    return {
+        "agent": correlation_agent,
+        "vulnerabilities": vulnerabilities,
+        "recent_alerts": recent_alerts,
+        "cases": cases,
+    }

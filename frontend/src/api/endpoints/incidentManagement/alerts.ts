@@ -5,6 +5,7 @@ import type {
 	AlertComment,
 	AlertContext,
 	AlertDetails,
+\tAlertCorrelation,
 	AlertsFilter,
 	AlertStatus,
 	AlertTag,
@@ -143,6 +144,14 @@ export default {
 				index_name: indexName
 			}
 		)
+	},
+	getAlertCorrelation(indexId: string, indexName: string, alertId?: number, agentId?: string) {
+		return HttpClient.post<FlaskBaseResponse & AlertCorrelation>(`/incidents/alerts/alert/correlation`, {
+			index_id: indexId,
+			index_name: indexName,
+			alert_id: alertId,
+			agent_id: agentId
+		})
 	},
 	getAvailableUsers() {
 		return HttpClient.get<FlaskBaseResponse & { available_users: string[] }>(
