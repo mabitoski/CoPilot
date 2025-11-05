@@ -588,12 +588,12 @@ async def _build_alert_correlation(
     }
 
 
-async def _collect_graylog_signals(host_identifier: str, *, timerange_minutes: int = 1440, limit: int = 20) -> List[AlertCorrelationAlert]:
+async def _collect_graylog_signals(host_identifier: str, *, timerange_minutes: int = 43200, limit: int = 20) -> List[AlertCorrelationAlert]:
     """Query Graylog for recent events related to the host.
 
     Args:
         host_identifier: hostname/agent identifier to search for.
-        timerange_minutes: relative timeframe to search (default 24h).
+        timerange_minutes: relative timeframe to search (default 30d).
         limit: maximum number of events to retrieve.
 
     Returns:
