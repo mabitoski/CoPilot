@@ -252,7 +252,7 @@ async def sync_agents_wazuh() -> SyncedAgentsResponse:
 
     async with get_db_session() as session:  # Create a new session here
         for wazuh_agent in wazuh_agents_list.agents:
-            customer_code = extract_customer_code(wazuh_agent.agent_label)
+            extracted_customer_code = extract_customer_code(wazuh_agent.agent_label)
 
             existing_agent_query = select(Agents).filter(
                 Agents.hostname == wazuh_agent.agent_name,
@@ -261,9 +261,10 @@ async def sync_agents_wazuh() -> SyncedAgentsResponse:
             existing_agent = result.scalars().first()
 
             if existing_agent:
-                await update_wazuh_agent_in_db(session, existing_agent, wazuh_agent, customer_code)
+                effective_customer_code = extracted_customer_code or existing_agent.customer_code
+                await update_wazuh_agent_in_db(session, existing_agent, wazuh_agent, effective_customer_code)
             else:
-                await add_wazuh_agent_in_db(session, wazuh_agent, customer_code)
+                await add_wazuh_agent_in_db(session, wazuh_agent, extracted_customer_code)
 
             synced_wazuh_agent = SyncedWazuhAgent(**wazuh_agent.dict())
             agents_added_list.append(synced_wazuh_agent)
