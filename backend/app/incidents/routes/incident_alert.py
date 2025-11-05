@@ -18,6 +18,7 @@ from app.active_response.schema.graylog import GraylogThresholdEventNotification
 from app.auth.utils import AuthHandler
 from app.db.db_session import get_db
 from app.incidents.schema.alert_collection import AlertsPayload
+from app.connectors.graylog.utils.universal import send_post_request
 from app.connectors.wazuh_indexer.schema.alerts import AlertsSearchBody
 from app.connectors.wazuh_indexer.schema.alerts import HostAlertsSearchBody
 from app.connectors.wazuh_indexer.services.alerts import collect_alerts_generic
@@ -534,25 +535,30 @@ async def _build_alert_correlation(
 
     host_identifier = hostname or (agent_record.hostname if agent_record else None)
     if host_identifier:
-        search_body = HostAlertsSearchBody(agent_name=host_identifier, size=10)
-        try:
-            alerts_response = await collect_alerts_generic(alert.index_name, search_body, is_host_specific=True)
-            if alerts_response.success and alerts_response.alerts:
-                for alert_item in alerts_response.alerts[:5]:
-                    source = alert_item.get("_source", {})
-                    timestamp = source.get("timestamp") or source.get("@timestamp")
-                    recent_alerts.append(
-                        AlertCorrelationAlert(
-                            index=alert_item.get("_index"),
-                            id=alert_item.get("_id"),
-                            timestamp=timestamp,
-                            rule_description=source.get("rule_description") or source.get("rule_name"),
-                            syslog_level=source.get("syslog_level"),
-                            message=source.get("message") or source.get("full_log"),
-                        ),
-                    )
-        except HTTPException as exc:
-            logger.warning(f"Failed to collect recent alerts for host {host_identifier}: {exc.detail}")
+        # Prefer direct Graylog search for broader signal coverage
+        graylog_alerts = await _collect_graylog_signals(host_identifier)
+        if graylog_alerts:
+            recent_alerts.extend(graylog_alerts)
+        else:
+            search_body = HostAlertsSearchBody(agent_name=host_identifier, size=10)
+            try:
+                alerts_response = await collect_alerts_generic(alert.index_name, search_body, is_host_specific=True)
+                if alerts_response.success and alerts_response.alerts:
+                    for alert_item in alerts_response.alerts[:5]:
+                        source = alert_item.get("_source", {})
+                        timestamp = source.get("timestamp") or source.get("@timestamp")
+                        recent_alerts.append(
+                            AlertCorrelationAlert(
+                                index=alert_item.get("_index"),
+                                id=alert_item.get("_id"),
+                                timestamp=timestamp,
+                                rule_description=source.get("rule_description") or source.get("rule_name"),
+                                syslog_level=source.get("syslog_level"),
+                                message=source.get("message") or source.get("full_log"),
+                            ),
+                        )
+            except HTTPException as exc:
+                logger.warning(f"Failed to collect recent alerts for host {host_identifier}: {exc.detail}")
 
         try:
             case_results = await list_cases_by_asset_name(host_identifier, session)
@@ -580,3 +586,77 @@ async def _build_alert_correlation(
         "recent_alerts": recent_alerts,
         "cases": cases,
     }
+
+
+async def _collect_graylog_signals(host_identifier: str, *, timerange_minutes: int = 1440, limit: int = 20) -> List[AlertCorrelationAlert]:
+    """Query Graylog for recent events related to the host.
+
+    Args:
+        host_identifier: hostname/agent identifier to search for.
+        timerange_minutes: relative timeframe to search (default 24h).
+        limit: maximum number of events to retrieve.
+
+    Returns:
+        List[AlertCorrelationAlert]: formatted alert entries (up to 5). Empty if none available.
+    """
+
+    query_terms = [
+        f"hostname:{host_identifier}",
+        f"agent_name:{host_identifier}",
+        f"agent_hostname:{host_identifier}",
+    ]
+    payload = {
+        "query": " OR ".join(query_terms),
+        "range": timerange_minutes,
+        "limit": limit,
+        "sort": [
+            {
+                "field": "timestamp",
+                "order": "desc",
+            },
+        ],
+    }
+
+    try:
+        response = await send_post_request("/api/search/universal/relative", data=payload)
+    except HTTPException as exc:
+        logger.warning(f"Graylog correlation search failed for {host_identifier}: {exc.detail}")
+        return []
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(f"Unexpected error querying Graylog for {host_identifier}: {exc}")
+        return []
+
+    messages = response.get("data", {}).get("messages", []) if response else []
+    if not messages:
+        return []
+
+    alerts: List[AlertCorrelationAlert] = []
+    for message_wrapper in messages[:limit]:
+        message = message_wrapper.get("message", {})
+        timestamp = message.get("timestamp")
+        rule_description = message.get("rule_description") or message.get("description")
+        syslog_level = message.get("syslog_level") or message.get("level")
+        alerts.append(
+            AlertCorrelationAlert(
+                index=message_wrapper.get("index"),
+                id=message.get("_id") or message_wrapper.get("id"),
+                timestamp=timestamp,
+                rule_description=rule_description,
+                syslog_level=str(syslog_level) if syslog_level is not None else None,
+                message=message.get("message"),
+            ),
+        )
+
+    # Deduplicate and limit to 5 entries for UI readability
+    unique_alerts = []
+    seen_ids = set()
+    for alert in alerts:
+        primary_id = (alert.id, alert.timestamp, alert.message)
+        if primary_id in seen_ids:
+            continue
+        seen_ids.add(primary_id)
+        unique_alerts.append(alert)
+        if len(unique_alerts) >= 5:
+            break
+
+    return unique_alerts
