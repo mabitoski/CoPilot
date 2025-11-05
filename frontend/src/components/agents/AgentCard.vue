@@ -48,6 +48,26 @@
 				</div>
 			</div>
 
+			<div class="agent-customer" @click.stop>
+				<n-tag
+					v-if="agent.customer_code"
+					size="small"
+					type="info"
+					:bordered="false"
+				>
+					{{ agent.customer_code }}
+				</n-tag>
+				<n-select
+					v-else-if="customerOptions?.length"
+					size="small"
+					class="assign-select"
+					:options="customerOptions"
+					:loading="assigning"
+					placeholder="Assign customer"
+					@update:value="handleAssignCustomer"
+				/>
+			</div>
+
 			<div v-if="showActions" class="agent-actions">
 				<div class="box">
 					<n-tooltip>
@@ -64,11 +84,12 @@
 			</div>
 		</div>
 	</CardEntity>
-</template>
+ </template>
 
 <script setup lang="ts">
 import type { Agent } from "@/types/agents.d"
-import { NButton, NTooltip, useDialog, useMessage } from "naive-ui"
+import type { SelectOption } from "naive-ui"
+import { NButton, NSelect, NTag, NTooltip, useDialog, useMessage } from "naive-ui"
 import { computed, ref, toRefs } from "vue"
 import CardEntity from "@/components/common/cards/CardEntity.vue"
 import Icon from "@/components/common/Icon.vue"
@@ -76,6 +97,7 @@ import { useSettingsStore } from "@/stores/settings"
 import { AgentStatus } from "@/types/agents.d"
 import dayjs from "@/utils/dayjs"
 import { handleDeleteAgent, toggleAgentCritical } from "./utils"
+import Api from "@/api"
 
 const props = defineProps<{
 	agent: Agent
@@ -83,19 +105,21 @@ const props = defineProps<{
 	embedded?: boolean
 	hoverable?: boolean
 	clickable?: boolean
+	customerOptions?: SelectOption[]
 }>()
 
 const emit = defineEmits<{
 	(e: "delete"): void
 }>()
 
-const { agent, showActions, embedded, hoverable, clickable } = toRefs(props)
+const { agent, showActions, embedded, hoverable, clickable, customerOptions } = toRefs(props)
 
 const QuarantinedIcon = "ph:seal-warning-light"
 const StarIcon = "carbon:star"
 const DeleteIcon = "ph:trash"
 const dFormats = useSettingsStore().dateFormat
 const loading = ref(false)
+const assigning = ref(false)
 const message = useMessage()
 const dialog = useDialog()
 const isOnline = computed(() => {
@@ -139,7 +163,28 @@ function toggleCritical(agentId: string, criticalStatus: boolean) {
 		cbAfter: () => {
 			loading.value = false
 		}
-	})
+		})
+}
+
+function handleAssignCustomer(value: string) {
+	if (!value || assigning.value) return
+	assigning.value = true
+	Api.agents
+		.updateAgentCustomerCode(agent.value.agent_id, value)
+		.then(res => {
+			if (res.data.success) {
+				agent.value.customer_code = value
+				message.success(res.data.message || "Customer assigned successfully")
+			} else {
+				message.error(res.data?.message || "Failed to assign customer")
+			}
+		})
+		.catch(err => {
+			message.error(err.response?.data?.message || "Failed to assign customer")
+		})
+		.finally(() => {
+			assigning.value = false
+		})
 }
 </script>
 
@@ -222,6 +267,17 @@ function toggleCritical(agentId: string, criticalStatus: boolean) {
 				opacity: 0.7;
 				overflow: hidden;
 				text-overflow: ellipsis;
+			}
+		}
+
+		.agent-customer {
+			display: flex;
+			align-items: center;
+			gap: calc(var(--spacing) * 2);
+			min-width: 160px;
+
+			.assign-select {
+				min-width: 160px;
 			}
 		}
 

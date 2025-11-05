@@ -77,6 +77,14 @@ export default {
 			}
 		)
 	},
+	updateAgentCustomerCode(agentId: string, customerCode: string | null) {
+		return HttpClient.put<FlaskBaseResponse>(
+			`/agents/${agentId}/customer-code`,
+			{
+				customer_code: customerCode
+			}
+		)
+	},
 	upgradeWazuhAgent(agentId: string) {
 		return HttpClient.post<FlaskBaseResponse>(`/agents/${agentId}/wazuh/upgrade`)
 	},

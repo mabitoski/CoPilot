@@ -18,13 +18,14 @@
 					<n-scrollbar class="grow">
 						<div class="agents-list flex flex-grow flex-col gap-3">
 							<template v-if="agentsFiltered.length">
-								<AgentCard
-									v-for="agent in itemsPaginated"
-									:key="agent.agent_id"
-									:agent
-									show-actions
-									hoverable
-									clickable
+					<AgentCard
+						v-for="agent in itemsPaginated"
+						:key="agent.agent_id"
+						:agent
+						:customer-options="customerSelectOptions"
+						show-actions
+						hoverable
+						clickable
 									class="item-appear item-appear-bottom item-appear-005"
 									@delete="syncAgents()"
 									@click.stop="gotoAgent(agent.agent_id)"
@@ -56,6 +57,7 @@
 
 <script setup lang="ts">
 import type { Agent } from "@/types/agents.d"
+import type { Customer } from "@/types/customers.d"
 import _debounce from "lodash/debounce"
 import _split from "lodash/split"
 import { NEmpty, NPagination, NScrollbar, NSpin, useMessage } from "naive-ui"
@@ -71,6 +73,7 @@ const { gotoAgent } = useGoto()
 const loadingAgents = ref(false)
 const loadingSync = ref(false)
 const agents = ref<Agent[]>([])
+const customers = ref<Customer[]>([])
 const textFilter = ref("")
 const page = ref(1)
 const pageSize = ref(20)
@@ -108,6 +111,13 @@ const agentsCritical = computed(() => {
 const agentsOnline = computed(() => {
 	return agents.value.filter(({ wazuh_agent_status }) => wazuh_agent_status === AgentStatus.Active)
 })
+
+const customerSelectOptions = computed(() =>
+	customers.value.map(customer => ({
+		label: `${customer.customer_code} — ${customer.customer_name}`,
+		value: customer.customer_code
+	}))
+)
 
 function runCommand(command: string) {
 	if (command === "sync-agents") {
@@ -187,8 +197,23 @@ function syncVulnerabilities(customerCode: string) {
 		})
 }
 
+function loadCustomers() {
+	Api.customers
+		.getCustomers()
+		.then(res => {
+			if (res.data.success) {
+				const list = res.data.customers || (res.data.customer ? [res.data.customer] : [])
+				customers.value = list || []
+			}
+		})
+		.catch(() => {
+			// ignore silently
+		})
+}
+
 onBeforeMount(() => {
 	getAgents()
+	loadCustomers()
 })
 </script>
 

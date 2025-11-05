@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.agents.schema.agents import AgentModifyResponse
+from app.agents.schema.agents import AgentUpdateCustomerCodeBody
+from app.agents.schema.agents import AgentUpdateCustomerCodeResponse
 from app.agents.schema.agents import AgentsResponse
 from app.agents.schema.agents import AgentWazuhUpgradeResponse
 from app.agents.schema.agents import OutdatedVelociraptorAgentsResponse
@@ -51,6 +53,7 @@ from app.db.db_session import get_db
 # App specific imports
 # from app.db.db_session import session
 from app.db.universal_models import Agents
+from app.db.universal_models import Customers
 from app.incidents.schema.db_operations import CaseOutResponse
 from app.incidents.services.db_operations import list_cases_by_asset_name
 from app.middleware.customer_access import customer_access_handler
@@ -1084,24 +1087,43 @@ async def sync_vulnerabilities_customer_code_route(
     return {"success": True, "message": "Agent vulnerabilities sync initiated successfully"}
 
 
-# ! TODO: CURRENTLY UPDATES IN THE DB BUT NEED TO UPDATE IN WAZUH # !
-# @agents_router.put(
-#     "/{agent_id}/update-customer-code",
-#     response_model=AgentUpdateCustomerCodeResponse,
-#     description="Update `agent` customer code",
-#     dependencies=[Security(AuthHandler().require_any_scope("admin", "analyst"))],
-# )
-# async def update_agent_customer_code(agent_id: str, body: AgentUpdateCustomerCodeBody, db: AsyncSession = Depends(get_db)) -> AgentUpdateCustomerCodeResponse:
-#     logger.info(f"Updating agent {agent_id} customer code to {body.customer_code}")
-#     try:
-#         result = await db.execute(select(Agents).filter(Agents.agent_id == agent_id))
-#         agent = result.scalars().first()
-#         if not agent:
-#             raise HTTPException(status_code=404, detail=f"Agent with agent_id {agent_id} not found")
-#         agent.customer_code = body.customer_code
-#         await db.commit()
-#         logger.info(f"Agent {agent_id} customer code updated to {body.customer_code}")
-#         return {"success": True, "message": f"Agent {agent_id} customer code updated to {body.customer_code}"}
-#     except Exception as e:
-#         if not agent:
-#             raise HTTPException(status_code=404, detail=f"Agent with agent_id {agent_id} not found")
+@agents_router.put(
+    "/{agent_id}/customer-code",
+    response_model=AgentUpdateCustomerCodeResponse,
+    description="Update agent customer code",
+    dependencies=[Security(AuthHandler().require_any_scope("admin", "analyst"))],
+)
+async def update_agent_customer_code(
+    agent_id: str,
+    body: AgentUpdateCustomerCodeBody,
+    db: AsyncSession = Depends(get_db),
+) -> AgentUpdateCustomerCodeResponse:
+    """
+    Update the customer code associated with an agent.
+    """
+    logger.info(f"Updating agent {agent_id} customer code to {body.customer_code}")
+    try:
+        agent_result = await db.execute(select(Agents).filter(Agents.agent_id == agent_id))
+        agent = agent_result.scalars().first()
+        if not agent:
+            raise HTTPException(status_code=404, detail=f"Agent with agent_id {agent_id} not found")
+
+        if body.customer_code:
+            customer_result = await db.execute(select(Customers).filter(Customers.customer_code == body.customer_code))
+            customer = customer_result.scalars().first()
+            if not customer:
+                raise HTTPException(status_code=404, detail=f"Customer code {body.customer_code} not found")
+
+        agent.customer_code = body.customer_code
+        await db.commit()
+        logger.info(f"Agent {agent_id} customer code updated to {body.customer_code}")
+        return AgentUpdateCustomerCodeResponse(
+            success=True,
+            message=f"Agent {agent_id} customer code updated to {body.customer_code}",
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to update agent {agent_id} customer code: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update agent {agent_id} customer code: {e}")
