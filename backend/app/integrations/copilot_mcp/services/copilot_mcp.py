@@ -6,12 +6,17 @@ import time
 from enum import Enum
 from typing import Any
 from typing import Dict
+from typing import List
 from typing import Optional
+from typing import Tuple
 
+from fastapi import HTTPException
 from loguru import logger
 import openai
 from openai.error import OpenAIError
 
+from app.connectors.wazuh_indexer.schema.alerts import AlertsSearchBody
+from app.connectors.wazuh_indexer.services.alerts import collect_and_aggregate_alerts
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPQueryRequest
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPQueryResponse
 from app.integrations.copilot_mcp.schema.copilot_mcp import MCPServerType
@@ -128,8 +133,17 @@ class MCPService:
         system_prompt = (
             "You are the SOCFORTRESS CoPilot assistant. Provide clear, actionable responses in Markdown. "
             "When relevant, include bullet lists or tables. Use concise explanations tailored to SOC analysts. "
+            "When operational context is provided, ground your answers in that data and state when information is unavailable. "
             "Always return valid JSON with the keys: response (string) and optional thinking_process (string)."
         )
+
+        context_text = ""
+        if data.mcp_server in {
+            MCPServerType.COPILOT,
+            MCPServerType.WAZUH_INDEXER,
+            MCPServerType.WAZUH_MANAGER,
+        }:
+            context_text = await cls._build_soc_context()
 
         server_context = (
             f"The user selected the '{data.mcp_server.value}' knowledge domain. "
@@ -137,7 +151,12 @@ class MCPService:
         )
         verbose_hint = "The user requested verbose output with more detailed reasoning." if data.verbose else ""
 
+        context_section = ""
+        if context_text:
+            context_section = f"Operational context (last 24h):\n{context_text}\n\n"
+
         user_prompt = (
+            f"{context_section}"
             f"{server_context} {verbose_hint}\n\n"
             "User question:\n"
             f"{data.input}"
@@ -215,6 +234,59 @@ class MCPService:
             execution_time=execution_time,
         )
 
+    @classmethod
+    async def _build_soc_context(cls, timerange: str = "24h", top_n: int = 5) -> str:
+        """
+        Build a concise SOC context summary to ground chatbot responses.
+        """
+        search_body = AlertsSearchBody(timerange=timerange, size=top_n)
+
+        try:
+            (
+                host_top,
+                host_total,
+            ), (
+                rule_top,
+                _,
+            ), (
+                source_top,
+                _,
+            ) = await asyncio.gather(
+                cls._aggregate_field(["agent_name"], search_body, top_n),
+                cls._aggregate_field(["rule_description"], search_body, top_n),
+                cls._aggregate_field(["syslog_type"], search_body, top_n),
+            )
+        except HTTPException as exc:
+            logger.warning(f"Failed to gather SOC context from Wazuh Indexer: {exc.detail}")
+            return ""
+        except Exception as exc:  # pragma: no cover
+            logger.warning(f"Unexpected error while gathering SOC context: {exc}")
+            return ""
+
+        if host_total == 0 and not (rule_top or source_top):
+            return ""
+
+        lines = []
+        if host_total:
+            lines.append(f"- Total alerts observed: {host_total}")
+
+        if host_top:
+            lines.append("- Top hosts by alert volume:")
+            for label, count in host_top:
+                lines.append(f"  • {label}: {count}")
+
+        if rule_top:
+            lines.append("- Top rules triggered:")
+            for label, count in rule_top:
+                lines.append(f"  • {label}: {count}")
+
+        if source_top:
+            lines.append("- Top alert sources:")
+            for label, count in source_top:
+                lines.append(f"  • {label}: {count}")
+
+        return "\n".join(lines)
+
     @staticmethod
     def _parse_openai_json_payload(raw_content: str) -> Dict[str, Any]:
         """
@@ -245,6 +317,35 @@ class MCPService:
             parsed["thinking_process"] = str(parsed["thinking_process"])
 
         return parsed
+
+    @staticmethod
+    async def _aggregate_field(
+        field_names: List[str],
+        search_body: AlertsSearchBody,
+        top_n: int,
+    ) -> Tuple[List[Tuple[str, int]], int]:
+        """
+        Aggregate alerts by the given field names and return the top results.
+        """
+        try:
+            raw_counts = await collect_and_aggregate_alerts(field_names, search_body)
+        except Exception as exc:
+            logger.debug(f"Failed to aggregate field {field_names}: {exc}")
+            return [], 0
+
+        total = sum(raw_counts.values())
+        formatted: list[tuple[str, int]] = []
+        for composite_key, count in raw_counts.items():
+            label_parts = [
+                str(part).strip()
+                for part in composite_key
+                if part not in (None, "", "None", "null")
+            ]
+            label = " / ".join(label_parts) if label_parts else "Unknown"
+            formatted.append((label, count))
+
+        formatted.sort(key=lambda item: item[1], reverse=True)
+        return formatted[:top_n], total
 
     @classmethod
     def add_local_service(cls, server_type: MCPServerType, endpoint: str) -> None:
