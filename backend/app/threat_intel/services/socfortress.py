@@ -435,8 +435,8 @@ async def get_ai_alert_response(
         raise HTTPException(status_code=502, detail="OpenAI response format is invalid.") from exc
 
     try:
-        parsed_response: Dict[str, Any] = json.loads(content)
-    except json.JSONDecodeError as exc:
+        parsed_response = _parse_openai_json_payload(content)
+    except ValueError as exc:
         logger.error(f"Failed to decode OpenAI response: {content}")
         raise HTTPException(status_code=502, detail="Failed to parse OpenAI response.") from exc
 
@@ -672,6 +672,22 @@ async def socfortress_velociraptor_recommendation_lookup(
         license_key=lincense_key,
         request=request,
     )
+
+
+def _parse_openai_json_payload(raw_content: str) -> Dict[str, Any]:
+    """
+    Extract JSON from an OpenAI message, handling Markdown fences and lenient newline usage.
+    """
+    if not isinstance(raw_content, str):
+        raise ValueError("OpenAI response content must be a string.")
+
+    text = raw_content.strip()
+    fence_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.S)
+    if fence_match:
+        text = fence_match.group(1)
+
+    decoder = json.JSONDecoder(strict=False)
+    return decoder.decode(text)
 
 
 def _coerce_confidence_score(raw_value: Any) -> float:
