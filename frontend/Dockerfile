@@ -55,7 +55,7 @@ RUN chmod +x /docker-entrypoint.d/90-copilot-ssl.sh
 
 # Setup template
 RUN mkdir -p /etc/nginx/templates /etc/nginx/certs /etc/nginx/certs.d
-COPY build/certs/dhparams.pem /etc/nginx/certs/dhparams.pem
+COPY build/certs/ /etc/nginx/certs/
 COPY build/etc/nginx/sites-enabled/default.conf /etc/nginx/templates/default.conf.template
 
 # Copy built static files from the builder stage
