@@ -53,10 +53,14 @@ ENV TLS_KEY_PATH=/etc/nginx/certs.d/server.key
 COPY build/docker-entrypoint.d/90-copilot-ssl.sh /docker-entrypoint.d/90-copilot-ssl.sh
 RUN chmod +x /docker-entrypoint.d/90-copilot-ssl.sh
 
-# Setup template
+# Setup template and certificates directory
 RUN mkdir -p /etc/nginx/templates /etc/nginx/certs /etc/nginx/certs.d
-COPY build/certs/ /etc/nginx/certs/
+
+# Copy nginx configuration template
 COPY build/etc/nginx/sites-enabled/default.conf /etc/nginx/templates/default.conf.template
+
+# Copy DH parameters file individually to avoid cache issues
+COPY build/certs/dhparams.pem /etc/nginx/certs/dhparams.pem
 
 # Copy built static files from the builder stage
 COPY --from=builder /app/dist /var/www/copilot
