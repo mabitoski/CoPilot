@@ -59,8 +59,9 @@ RUN mkdir -p /etc/nginx/templates /etc/nginx/certs /etc/nginx/certs.d
 # Copy nginx configuration template
 COPY build/etc/nginx/sites-enabled/default.conf /etc/nginx/templates/default.conf.template
 
-# Copy DH parameters file individually to avoid cache issues
-COPY build/certs/dhparams.pem /etc/nginx/certs/dhparams.pem
+# Generate DH parameters directly in the image to avoid copy issues
+# This will be overridden by the entrypoint script if needed
+RUN openssl dhparam -out /etc/nginx/certs/dhparams.pem 2048
 
 # Copy built static files from the builder stage
 COPY --from=builder /app/dist /var/www/copilot
